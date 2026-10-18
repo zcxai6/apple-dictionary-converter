@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+*.dictionary/
+
+# 构建中间产物
+*.command
+
+# 注：古汉语词典转换器.app 体积较大（约 87MB，含内置 Python 与 DDK），
+# 推荐作为 GitHub Release 资产发布，而非直接提交进 git 历史。
+# 若直接提交，建议启用 Git LFS 或接受大文件。

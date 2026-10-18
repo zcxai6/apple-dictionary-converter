@@ -1,0 +1,57 @@
+古汉语词典转换器（macOS）
+第三方组件来源、用途与许可声明
+=====================================
+
+本仓库 / 应用打包了以下第三方组件。各组件遵循其各自的许可证与版权声明。
+本应用自身的打包脚本与转换逻辑以 MIT 许可证发布（见 LICENSE）。
+
+1. PyGlossary
+   - 用途：词典格式转换核心（StarDict ↔ AppleDict 工程生成）。
+   - 版本：5.4.2
+   - 许可证：GPL-3.0
+   - 来源：https://github.com/ilius/pyglossary
+   - 在本应用中的位置：Contents/Resources/python3.13/lib/python3.13/site-packages/pyglossary/
+   - 数据文件：Contents/Resources/python3.13/share/pyglossary/
+
+2. Apple Dictionary Development Kit (DDK)
+   - 用途：将 AppleDict 工程编译为 macOS 原生 .dictionary 包。
+   - 许可证：Apple 专有软件（随 Xcode / Dictionary Development Kit / DictUnifier 分发）。
+   - 来源：取自 DictUnifier.app 自带的 DDK 工具链
+            （https://github.com/ctg/DictUnifier）。
+   - 在本应用中的位置：Contents/Resources/ddk/
+   - 说明：DDK 中的 make_dict_package / build_key_index 等为 x86_64 二进制，
+           在 Apple Silicon Mac 上通过 Rosetta 2 运行。版权归 Apple Inc.，
+           仅用于个人/教育用途。使用者亦可自行以环境变量
+           DICT_BUILD_TOOL_BIN 指向官方 DDK 来替换本应用所带的副本。
+
+3. dictkit/data-dicts
+   - 用途：提供《古代汉语词典（第2版）》《古汉语常用字字典（第5版）》等 CSV 源数据。
+   - 许可证：该仓库未声明任何显式开源许可证。
+   - 数据版权：归原词典编者 / 出版机构所有；仓库声明「版权归词典（字典）的
+            创作者（编者/出版机构等）」「整理自网络，不对其中错谬负责」。
+   - 来源：https://github.com/dictkit/data-dicts
+   - 使用范围：仅供个人学习研究，不进行商业分发。
+
+4. 中文维基词典 (zh.wiktionary.org)
+   - 用途：*.bz2 全量 dump 作为「古汉语→现代汉语」文言义项的来源。
+   - 许可证：CC BY-SA 4.0
+   - 来源：https://zh.wiktionary.org （dump: https://dumps.wikimedia.org/zhwiktionary/）
+
+5. Python 3.13 及运行时依赖
+   - 用途：应用内置运行时与 XML/HTML 解析。
+   - 组件与许可：
+       * CPython 3.13           — PSF License
+       * lxml                   — BSD-3-Clause
+       * beautifulsoup4 / bs4   — MIT
+       * html5lib               — MIT
+       * soupsieve              — MIT
+       * openpyxl               — MIT
+       * et_xmlfile             — MIT
+       * charset_normalizer     — MIT
+       * requests / urllib3 /
+         idna / certifi         — Apache-2.0 / MPL-2.0 / BSD 等（见各包声明）
+       * typing_extensions      — PSF
+       * biplist                — BSD
+   - 在本应用中的位置：Contents/Resources/python3.13/
+
+生成说明：以上组件由 build_app.sh 从本机环境收集打包，依赖固定版本以保证可复现。
