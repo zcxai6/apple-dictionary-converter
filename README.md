@@ -17,6 +17,8 @@
 
 转换链路：`源文件 → StarDict（中间格式）→ AppleDict 工程 → DDK 编译 .dictionary → 修正 plist`。
 
+转换成功后，输出目录里**只保留最终产物 `名称.dictionary`**——中间的 StarDict 源和 AppleDict 编译工程都会被自动删除（`/bin/rm -rf`），不会出现两个长得差不多的目录让你分不清哪个能用。**带 `.dictionary` 后缀的那个就是要用的**，直接拖进 `~/Library/Dictionaries/` 即可。
+
 ## 使用方法（图形界面）
 
 1. 双击 `古汉语词典转换器.app`。
@@ -51,7 +53,7 @@ CONVERT="$APP/Contents/Resources/scripts/convert.py"
 "$PY" "$CONVERT" csv 路径/古代汉语词典（第2版）.csv 输出目录 "古代汉语词典（第2版）" --name "古代汉语词典（第2版）" --install
 ```
 
-常用参数：`--name 名称`（指定输出名）、`--install`（装到系统词典目录）、`--keep-src`（保留中间 StarDict）。
+常用参数：`--name 名称`（指定输出名）、`--install`（装到系统词典目录）、`--keep-src`（保留全部中间产物：StarDict 源与 AppleDict 编译工程，供调试）。
 
 ## 从源码重建本应用
 
@@ -63,6 +65,16 @@ bash build_app.sh
 
 脚本会收集本机的 Python + PyGlossary、Apple DDK 工具，并复制脚本，组装成新的 `.app`。
 （他人机器需先有 Python 3.13 + 已安装 PyGlossary，并可设置环境变量 `PYTHON_SRC` / `VENV_SP` / `VENV_SHARE` / `DDK_SRC` 指向对应路径。）
+
+### App 图标
+
+图标设计取「词典」的「**词**」字，用一个箭头把它变成「**词典**」——正是本工具做的事。
+由 `src/make_icon.py`（Pillow + 宋体）生成 1024px 母图，再用 `sips` + `iconutil` 合成 `app.icns`：
+
+```bash
+pip install Pillow
+python3 src/make_icon.py src   # 重新生成 src/app.icns（build_app.sh 会自动打包进 .app）
+```
 
 ## 致谢与引用（第三方项目）
 

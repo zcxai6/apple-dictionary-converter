@@ -52,11 +52,17 @@ for f in "$APP/Contents/Resources/ddk"/*; do
   fi
 done
 
-echo "[5/5] 复制脚本 / Info.plist / launcher ..."
+echo "[5/5] 复制脚本 / Info.plist / launcher / 图标 ..."
 cp "$SRC/convert.py" "$SRC/wiktionary_parse.py" "$SRC/stardict_write.py" "$SRC/fix_dict_plist.sh" "$APP/Contents/Resources/scripts/"
 cp "$SRC/launcher.sh" "$APP/Contents/MacOS/launcher.sh"
 chmod +x "$APP/Contents/MacOS/launcher.sh"
 cp "$SRC/Info.plist" "$APP/Contents/Info.plist"
+# App 图标（由 src/make_icon.py 生成：词 → 词典）
+if [ -f "$SRC/app.icns" ]; then
+  cp "$SRC/app.icns" "$APP/Contents/Resources/app.icns"
+else
+  echo "提示：未找到 src/app.icns，可运行 src/make_icon.py 生成"
+fi
 
 # 去掉本机绝对路径痕迹（若有）
 echo "完成：双击「$APP」即可使用"

@@ -145,10 +145,15 @@ def compile_stardict(ifo, outdir, name, install, keep_src=False):
         shutil.copytree(bundle, target)
         log(">>> 已安装到: %s" % target)
 
-    if not keep_src:
-        # 清理中间 StarDict 源（若它就在 project 内则保留；这里只清 temp）
-        pass
-    log("=== DONE: %s ===" % outbundle)
+    # ---- 清理中间工程目录（AppleDict 编译工程，非最终产物）----
+    # 最终可用产物是 outbundle（*.dictionary）；project 只是 PyGlossary+DDK 的构建中间目录，
+    # 它会和最终 *.dictionary 并列出现在输出目录里，容易分不清哪个该用。
+    # 默认用删除命令清掉它，只保留真正的成品；--keep-src 时保留以供调试。
+    if not keep_src and os.path.isdir(project) and os.path.abspath(project) != os.path.abspath(outbundle):
+        log(">>> 清理中间工程目录（构建用，非成品）: %s" % project)
+        subprocess.run(["/bin/rm", "-rf", project], check=False)
+
+    log("=== DONE: 最终产物（请使用这个 *.dictionary）: %s ===" % outbundle)
     return outbundle
 
 
