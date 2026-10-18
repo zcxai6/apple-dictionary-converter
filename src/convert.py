@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-古汉语词典转换器 —— 核心转换引擎
+苹果字典转换器 —— 核心转换引擎
 
 把一个词典源文件转换成 macOS 原生词典格式（.dictionary）：
 
@@ -183,7 +183,7 @@ def cmd_csv(args):
 
 
 def main():
-    p = argparse.ArgumentParser(description="古汉语词典转换器：源文件 -> macOS .dictionary")
+    p = argparse.ArgumentParser(description="苹果字典转换器：源文件 -> macOS .dictionary")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pw = sub.add_parser("wiktionary", help="中文维基词典 .bz2 dump -> AppleDict")

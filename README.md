@@ -1,4 +1,4 @@
-# 古汉语词典转换器（macOS）
+# 苹果字典转换器（macOS）
 
 一个**独立、双击即用**的 macOS 应用，把你手头的古汉语词典源文件转换成系统「词典」App 能直接打开的原生格式（`.dictionary`）。
 
@@ -21,7 +21,7 @@
 
 ## 使用方法（原生图形界面）
 
-双击 `古汉语词典转换器.app` 后，**一个真正的原生窗口**（macOS Aqua 外观，基于 Python 标准库 tkinter）会直接打开。
+双击 `苹果字典转换器.app` 后，**一个真正的原生窗口**（macOS Aqua 外观，基于 Python 标准库 tkinter）会直接打开。
 **不依赖任何浏览器、不启动 web 服务、不联网、文件不出本机**；全部转换都在应用内部子进程完成，**不会弹出终端**，应用会一直运行到你在窗口点「退出」。
 
 界面功能：
@@ -29,7 +29,8 @@
   支持 `.bz2`（维基）/ `.csv`（dictkit）/ `.ifo` + `.idx` + `.dict`（StarDict）。
 - **转换模式**：默认「自动识别」（按扩展名），也可手动指定。
 - **输出名称 / 输出目录 / 是否安装到系统词典目录**：按需填写。
-- **实时进度**：点「开始转换」后，下方日志框实时滚动显示每一步（PyGlossary → DDK 编译 → 修正 plist）。日志框**支持右键**（复制 / 全选 / 清空）。
+- **进度条**：点「开始转换」后，底部进度条开始脉动表示正在工作，完成时填满。
+- **日志（默认隐藏）**：进度条左上方有一个「显示日志 ▸」小按钮，点一下展开实时日志（PyGlossary → DDK 编译 → 修正 plist），再点收起。日志框**支持右键**（复制 / 全选 / 清空）。
 - **完成定位**：转换结束后给出最终 `*.dictionary` 路径，一键「在 Finder 中显示」。
 - **菜单栏 · 高级**：
   - 显示内置 Python 版本与组件路径；
@@ -37,7 +38,7 @@
   - **内置「脚本编辑器」**：可直接查看/修改转换脚本（convert.py 等），保存即写回应用内（改坏可能导致转换失败，请谨慎）。
 
 > 若双击提示「无法打开」：在 Finder 中右键 → 打开，或执行
-> `xattr -dr com.apple.quarantine "古汉语词典转换器.app"` 解除隔离。
+> `xattr -dr com.apple.quarantine "苹果字典转换器.app"` 解除隔离。
 
 > **Apple Silicon 用户**：DDK 编译器是 x86 程序，需要 **Rosetta 2**。
 > 若未安装，应用会弹出提示，按提示在终端执行 `softwareupdate --install-rosetta` 即可。
@@ -48,7 +49,7 @@
 高级用户可直接调用内部脚本：
 
 ```bash
-APP="古汉语词典转换器.app"
+APP="苹果字典转换器.app"
 PY="$APP/Contents/Resources/python3.13/bin/python3"
 CONVERT="$APP/Contents/Resources/scripts/convert.py"
 
@@ -66,7 +67,7 @@ CONVERT="$APP/Contents/Resources/scripts/convert.py"
 
 ## 从源码重建本应用
 
-仓库内的 `古汉语词典转换器.app` 已可直接使用。如需在自己机器上重新打包：
+仓库内的 `苹果字典转换器.app` 已可直接使用。如需在自己机器上重新打包：
 
 ```bash
 bash build_app.sh

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-古汉语词典转换器 —— 原生图形界面（tkinter / Aqua）
+苹果字典转换器 —— 原生图形界面（tkinter / Aqua）
 
 不依赖任何浏览器、不启动 web 服务。所有转换都在本进程内的子进程中完成，
 文件不会离开本机。支持：拖文件到程序图标 / 选择文件、模式自动识别、
-实时日志（右键可复制/清空）、完成后在 Finder 定位、内置脚本编辑器。
+完成后在 Finder 定位、内置脚本编辑器。日志默认隐藏，点「显示日志」可展开。
 """
 
 import os
@@ -41,7 +41,7 @@ def detect_mode(files):
 class App:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("古汉语词典转换器")
+        self.root.title("苹果字典转换器")
         try:
             self.root.tk.call("tk", "useinputmethods", 1)
         except Exception:
@@ -103,7 +103,7 @@ class App:
         # 标题行
         top = ttk.Frame(f)
         top.pack(fill="x")
-        ttk.Label(top, text="古汉语词典转换器", font=("Songti SC", 18, "bold")).pack(side="left")
+        ttk.Label(top, text="苹果字典转换器", font=("Songti SC", 18, "bold")).pack(side="left")
         ttk.Label(top, text="源文件 → macOS 原生 .dictionary", foreground="#666").pack(side="left", padx=8)
 
         # 源文件
@@ -156,16 +156,26 @@ class App:
         self.finder_btn = ttk.Button(row, text="在 Finder 中显示", command=self.open_last, state="disabled")
         self.finder_btn.pack(side="left", padx=10)
         self.last_out = None
+
+        # 进度条 + 日志开关（日志默认隐藏，点「显示日志」才展开）
+        row = ttk.Frame(f)
+        row.pack(fill="x", pady=(8, 0))
+        self.toggle_log_btn = ttk.Button(row, text="显示日志 ▸", command=self.toggle_log, width=11)
+        self.toggle_log_btn.pack(side="left")
         self.status_var = tk.StringVar(value="就绪")
         ttk.Label(row, textvariable=self.status_var, foreground="#666").pack(side="right")
 
-        # 日志
-        ttk.Label(f, text="转换日志：").pack(anchor="w", pady=(8, 0))
-        self.log = scrolledtext.ScrolledText(f, height=14, wrap="word", font=("Menlo", 11))
+        self.prog = ttk.Progressbar(f, mode="indeterminate", maximum=100)
+        self.prog.pack(fill="x", pady=(6, 0))
+
+        # 日志（默认不 pack，隐藏）
+        self.log_frame = ttk.Frame(f)
+        self.log = scrolledtext.ScrolledText(self.log_frame, height=12, wrap="word", font=("Menlo", 11))
         self.log.pack(fill="both", expand=True)
         self.log.config(state="disabled")
         self.log.bind("<Button-2>", self._log_menu)
         self.log.bind("<Control-Button-1>", self._log_menu)
+        self.log_visible = False
 
     # ---------- 文件选择 ----------
     def add_files(self, paths):
@@ -237,6 +247,9 @@ class App:
         self.finder_btn.config(state="disabled")
         self.last_out = None
         self.status_var.set("转换中…")
+        self.prog.config(mode="indeterminate")
+        self.prog["value"] = 0
+        self.prog.start(25)
         self._log("=" * 48)
         self._log("命令：%s" % " ".join(cmd))
         self._log("=" * 48)
@@ -300,6 +313,12 @@ class App:
     def _on_done(self, rc):
         self.running = False
         self.start_btn.config(state="normal")
+        self.prog.stop()
+        self.prog.config(mode="determinate")
+        self.prog["value"] = 100 if rc == 0 else 0
+        # 失败时自动展开日志，否则「详见转换日志」指向一个隐藏面板没意义
+        if rc != 0 and not self.log_visible:
+            self.toggle_log()
         if rc == 0:
             self.status_var.set("完成 ✓")
             self._log("\n✅ 转换成功。")
@@ -339,6 +358,15 @@ class App:
         if txt:
             self.root.clipboard_clear()
             self.root.clipboard_append(txt)
+
+    def toggle_log(self):
+        if self.log_visible:
+            self.log_frame.pack_forget()
+            self.toggle_log_btn.config(text="显示日志 ▸")
+        else:
+            self.log_frame.pack(fill="both", expand=True, pady=(6, 0))
+            self.toggle_log_btn.config(text="隐藏日志 ▾")
+        self.log_visible = not self.log_visible
 
     # ---------- 高级功能 ----------
     def open_scripts_dir(self):
@@ -404,8 +432,8 @@ class App:
 
     def about_app(self):
         messagebox.showinfo("关于",
-            "古汉语词典转换器\n\n"
-            "把古汉语词典源文件转换成 macOS 原生词典（.dictionary）。\n"
+            "苹果字典转换器\n\n"
+            "把词典源文件（维基 .bz2 / dictkit .csv / StarDict）转换成 macOS 原生词典（.dictionary）。\n"
             "基于 PyGlossary + Apple Dictionary Development Kit。\n"
             "详见仓库 README / NOTICE。")
 

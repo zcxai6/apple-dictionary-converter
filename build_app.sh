@@ -1,12 +1,12 @@
 #!/bin/bash
-# 组装自包含的「古汉语词典转换器.app」（原生 Aqua GUI，tkinter，无浏览器/无 web 服务）
+# 组装自包含的「苹果字典转换器.app」（原生 Aqua GUI，tkinter，无浏览器/无 web 服务）
 # 本机已具备依赖；他人使用需先设置 PYTHON_SRC / VENV_SP / VENV_SHARE / DDK_SRC，
 # 或自行安装 pyglossary 并准备 Apple Dictionary Development Kit (DDK)。
 set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/src"
-APP="$HERE/古汉语词典转换器.app"
+APP="$HERE/苹果字典转换器.app"
 
 # ---- 依赖来源（可用环境变量覆盖）----
 PYTHON_SRC="${PYTHON_SRC:-/Users/zhouchenxi/.workbuddy/binaries/python/versions/3.13.12}"
@@ -18,6 +18,8 @@ echo "构建 .app: $APP"
 # 清理旧构建：用 python 删除，避开 shell rm -rf 限制
 PYRM="${PYTHON_SRC}/bin/python3"
 "$PYRM" -c "import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)" "$APP" || true
+# 兼容重命名前构建出的旧 bundle：一并清理，避免新旧两份 .app 并存
+"$PYRM" -c "import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)" "$HERE/古汉语词典转换器.app" || true
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/scripts" "$APP/Contents/Resources/ddk" "$APP/Contents/Resources/python3.13"
 
 echo "[1/5] 复制 Python 运行时 ..."

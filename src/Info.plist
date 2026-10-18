@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>古汉语词典转换器</string>
+	<string>苹果字典转换器</string>
 	<key>CFBundleDisplayName</key>
-	<string>古汉语词典转换器</string>
+	<string>苹果字典转换器</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.github.gudai-hanyu-converter</string>
 	<key>CFBundleVersion</key>
