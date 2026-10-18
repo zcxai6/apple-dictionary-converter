@@ -53,7 +53,7 @@ for f in "$APP/Contents/Resources/ddk"/*; do
 done
 
 echo "[5/5] 复制脚本 / Info.plist / launcher / 图标 ..."
-cp "$SRC/convert.py" "$SRC/wiktionary_parse.py" "$SRC/stardict_write.py" "$SRC/fix_dict_plist.sh" "$APP/Contents/Resources/scripts/"
+cp "$SRC/convert.py" "$SRC/wiktionary_parse.py" "$SRC/stardict_write.py" "$SRC/fix_dict_plist.sh" "$SRC/gui_server.py" "$APP/Contents/Resources/scripts/"
 cp "$SRC/launcher.sh" "$APP/Contents/MacOS/launcher.sh"
 chmod +x "$APP/Contents/MacOS/launcher.sh"
 cp "$SRC/Info.plist" "$APP/Contents/Info.plist"

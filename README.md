@@ -19,16 +19,24 @@
 
 转换成功后，输出目录里**只保留最终产物 `名称.dictionary`**——中间的 StarDict 源和 AppleDict 编译工程都会被自动删除（`/bin/rm -rf`），不会出现两个长得差不多的目录让你分不清哪个能用。**带 `.dictionary` 后缀的那个就是要用的**，直接拖进 `~/Library/Dictionaries/` 即可。
 
-## 使用方法（图形界面）
+## 使用方法（内置图形界面）
 
-1. 双击 `古汉语词典转换器.app`。
-   - 若提示「无法打开」，在 Finder 中右键 → 打开，或执行 `xattr -dr com.apple.quarantine "古汉语词典转换器.app"` 解除隔离。
-2. 选择源文件（`.bz2` / `.ifo` / `.csv`）。
-   - CSV 会再让你填「词典书名」（写入元信息）。
-3. 填写输出的词典名称（即 `.dictionary` 文件夹名）。
-4. 选择输出目录。
-5. 选择「仅导出」还是「安装到系统词典目录」（`~/Library/Dictionaries`）。
-6. 转换在新终端窗口实时进行，完成后自动在 Finder 中定位结果。
+双击 `古汉语词典转换器.app` 后，**应用内部自带一个图形界面**会自动打开（本地页面，不联网、文件不出本机）。
+全部转换工作都在应用内部完成，**不会弹出终端**；应用会一直运行到你在界面点「退出」。
+
+界面功能：
+- **拖入文件或点击选择**：支持 `.bz2`（维基）/ `.csv`（dictkit）/ `.ifo` + `.idx` + `.dict`（StarDict，可多选一起拖入）。
+- **转换模式**：默认「自动识别」（按扩展名），也可手动指定。
+- **输出名称 / 输出目录 / 是否安装到系统词典目录**：按需填写。
+- **实时进度**：点击「开始转换」后，下方日志框实时滚动显示每一步（PyGlossary → DDK 编译 → 修正 plist）。
+- **完成定位**：转换结束后给出最终 `*.dictionary` 路径，一键「在 Finder 中显示」。
+- **关于 / 高级**：
+  - 显示内置 Python 版本与组件路径；
+  - 「在 Finder 打开脚本目录」；
+  - **内置「脚本编辑器」**：可直接查看/修改转换脚本（convert.py 等），保存即写回应用内（改坏可能导致转换失败，请谨慎）。
+
+> 若双击提示「无法打开」：在 Finder 中右键 → 打开，或执行
+> `xattr -dr com.apple.quarantine "古汉语词典转换器.app"` 解除隔离。
 
 > **Apple Silicon 用户**：DDK 编译器是 x86 程序，需要 **Rosetta 2**。
 > 若未安装，应用会弹出提示，按提示在终端执行 `softwareupdate --install-rosetta` 即可。
@@ -63,8 +71,8 @@ CONVERT="$APP/Contents/Resources/scripts/convert.py"
 bash build_app.sh
 ```
 
-脚本会收集本机的 Python + PyGlossary、Apple DDK 工具，并复制脚本，组装成新的 `.app`。
-（他人机器需先有 Python 3.13 + 已安装 PyGlossary，并可设置环境变量 `PYTHON_SRC` / `VENV_SP` / `VENV_SHARE` / `DDK_SRC` 指向对应路径。）
+脚本会从本机已有的 Python + PyGlossary、Apple DDK 路径收集并复制（可用环境变量 `PYTHON_SRC` / `VENV_SP` / `VENV_SHARE` / `DDK_SRC` 覆盖来源），组装成新的 `.app`。
+**打包产物完全自包含**，目标机器无需预装 Python / PyGlossary / DDK。
 
 ### App 图标
 
