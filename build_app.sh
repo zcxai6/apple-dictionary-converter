@@ -1,5 +1,5 @@
 #!/bin/bash
-# 组装自包含的「古汉语词典转换器.app」
+# 组装自包含的「古汉语词典转换器.app」（原生 Aqua GUI，tkinter，无浏览器/无 web 服务）
 # 本机已具备依赖；他人使用需先设置 PYTHON_SRC / VENV_SP / VENV_SHARE / DDK_SRC，
 # 或自行安装 pyglossary 并准备 Apple Dictionary Development Kit (DDK)。
 set -e
@@ -53,7 +53,19 @@ for f in "$APP/Contents/Resources/ddk"/*; do
 done
 
 echo "[5/5] 复制脚本 / Info.plist / launcher / 图标 ..."
-cp "$SRC/convert.py" "$SRC/wiktionary_parse.py" "$SRC/stardict_write.py" "$SRC/fix_dict_plist.sh" "$SRC/gui_server.py" "$APP/Contents/Resources/scripts/"
+cp "$SRC/convert.py" "$SRC/wiktionary_parse.py" "$SRC/stardict_write.py" "$SRC/fix_dict_plist.sh" "$SRC/gui_app.py" "$APP/Contents/Resources/scripts/"
+# 窗口/Dock 图标（gui_app.py 从脚本目录读取 app_icon_1024.png）
+if [ -f "$SRC/app_icon_1024.png" ]; then
+  cp "$SRC/app_icon_1024.png" "$APP/Contents/Resources/scripts/"
+else
+  echo "提示：未找到 src/app_icon_1024.png，窗口图标将不可用"
+fi
+# 构建时校验：打包的 Python 必须带 tkinter / Tcl-Tk，否则 GUI 一启动就崩
+if ! "$PYRM" -c "import tkinter, tkinter.ttk" >/dev/null 2>&1; then
+  echo "错误：PYTHON_SRC 中的 Python 不含 tkinter/Tcl-Tk，无法构建原生 GUI 应用。"
+  echo "请使用完整 CPython（含 _tkinter 与 libtcl/libtk）。"
+  exit 1
+fi
 cp "$SRC/launcher.sh" "$APP/Contents/MacOS/launcher.sh"
 chmod +x "$APP/Contents/MacOS/launcher.sh"
 cp "$SRC/Info.plist" "$APP/Contents/Info.plist"

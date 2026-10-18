@@ -1,15 +1,15 @@
 #!/bin/bash
 # 古汉语词典转换器 —— .app 入口
-# 设计：做完 Rosetta 前置检查后，直接用「应用内置的 Python」拉起图形界面服务，
-# 本进程即为服务进程（exec），会一直存活到用户在界面点「退出」，
-# 所有转换工作都在应用内部完成，绝不弹出终端。
+# 设计：做完 Rosetta 前置检查后，直接用「应用内置的 Python」拉起原生图形界面
+# （tkinter / Aqua 窗口，不依赖浏览器、不启动 web 服务）。本进程即界面进程（exec），
+# 会一直存活到用户在窗口点「退出」；所有转换工作都在应用内部子进程完成，绝不弹终端。
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONTENTS="$(dirname "$SCRIPT_DIR")"
 RESOURCES="$CONTENTS/Resources"
 SCRIPTS="$RESOURCES/scripts"
 PY="$RESOURCES/python3.13/bin/python3"
-GUI="$SCRIPTS/gui_server.py"
+GUI="$SCRIPTS/gui_app.py"
 
 # ---------- Rosetta 2 前置检查（Apple Silicon 需要它来运行 x86 版 DDK）----------
 if [ "$(uname -m)" = "arm64" ]; then
@@ -29,4 +29,5 @@ if [ ! -x "$PY" ]; then
 fi
 
 # ---------- 直接以内置 Python 运行图形界面（进程不退出，直到用户退出）----------
-exec "$PY" "$GUI"
+# 把拖到程序图标上的文件路径（argv）一并传给 GUI；无参数时正常双击启动。
+exec "$PY" "$GUI" "$@"
