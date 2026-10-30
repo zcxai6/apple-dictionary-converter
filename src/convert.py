@@ -227,18 +227,19 @@ def _unpack(archive, dest):
 
 
 def _find_all(root, exts):
-    """在 root（含子目录）里找所有匹配扩展名的文件。"""
+    """在 root（含子目录）里找所有匹配扩展名的文件（顺序确定）。"""
     hits = []
-    for dirpath, _, files in os.walk(root):
+    for dirpath, dirnames, files in os.walk(root):
+        dirnames.sort()
         for fn in sorted(files):
             if any(fn.lower().endswith(e) for e in exts):
                 hits.append(os.path.join(dirpath, fn))
     return hits
 
 
-def _find_first(root, exts):
-    hits = _find_all(root, exts)
-    return hits[0] if hits else None
+def _is_macos_meta(path):
+    """过滤 macOS 压缩包里的 __MACOSX / ._xxx 资源分支垃圾文件。"""
+    return os.path.basename(path).startswith("._") or "__MACOSX" in path.split(os.sep)
 
 
 def _looks_like_wiktionary(bz2_path):
@@ -250,6 +251,41 @@ def _looks_like_wiktionary(bz2_path):
         log("警告：嗅探 %s 失败（%s），按非维基 dump 处理。" % (bz2_path, e))
         return False
     return ("<mediawiki" in head) or ("<page>" in head) or ("<text" in head)
+
+
+def _classify(path, input_path):
+    """判断（解压后的）目录或文件到底是什么，返回 (mode, resolved_path)。"""
+    if os.path.isdir(path):
+        ifos = [p for p in _find_all(path, (".ifo",)) if not _is_macos_meta(p)]
+        if ifos:
+            if len(ifos) > 1:
+                log("警告：目录内发现 %d 个 .ifo，仅使用第一个：%s" % (len(ifos), ifos[0]))
+            return "stardict", ifos[0]
+        csvs = [p for p in _find_all(path, (".csv",)) if not _is_macos_meta(p)]
+        if csvs:
+            if len(csvs) > 1:
+                log("警告：目录内发现 %d 个 .csv，仅使用第一个：%s" % (len(csvs), csvs[0]))
+            return "csv", csvs[0]
+        # 可能存在多个 .bz2（无关文件 / 分卷 dump），逐个嗅探，取第一个像维基 dump 的
+        dumps = [p for p in _find_all(path, (".bz2",)) if _looks_like_wiktionary(p)]
+        if dumps:
+            if len(dumps) > 1:
+                log("警告：目录内发现 %d 个维基 dump，仅使用第一个：%s" % (len(dumps), dumps[0]))
+            return "wiktionary", dumps[0]
+        raise ValueError("输入 %s（解包后目录 %s）内未找到 .ifo / .csv / 维基 dump，无法识别。"
+                         % (input_path, path))
+
+    low = path.lower()
+    if low.endswith(".ifo"):
+        return "stardict", path
+    if low.endswith(".csv"):
+        return "csv", path
+    if low.endswith(".bz2") and not _is_archive(path):
+        if _looks_like_wiktionary(path):
+            return "wiktionary", path
+        raise ValueError("这是压缩的词库数据（很可能是 .dict.dz），缺少配套的 .ifo 索引，无法转换。"
+                         "请用完整的 StarDict 包（含 .ifo/.idx/.dict）。")
+    raise ValueError("无法识别的文件类型：%s" % path)
 
 
 def _detect(input_path):
@@ -273,41 +309,21 @@ def _detect(input_path):
             temp_dirs.remove(tmp)
             raise
         path = tmp
-
-    if os.path.isdir(path):
-        ifo = _find_first(path, (".ifo",))
-        if ifo:
-            return "stardict", ifo, temp_dirs
-        csv = _find_first(path, (".csv",))
-        if csv:
-            return "csv", csv, temp_dirs
-        # 可能存在多个 .bz2（无关文件 / 分卷 dump），逐个嗅探，取第一个像维基 dump 的
-        dumps = [p for p in _find_all(path, (".bz2",)) if _looks_like_wiktionary(p)]
-        if dumps:
-            if len(dumps) > 1:
-                log("警告：目录内发现 %d 个维基 dump，仅使用第一个：%s" % (len(dumps), dumps[0]))
-            return "wiktionary", dumps[0], temp_dirs
-        raise ValueError("输入 %s（解包后目录 %s）内未找到 .ifo / .csv / 维基 dump，无法识别。"
-                         % (input_path, path))
-
-    low = path.lower()
-    if low.endswith(".ifo"):
-        return "stardict", path, temp_dirs
-    if low.endswith(".csv"):
-        return "csv", path, temp_dirs
-    if low.endswith(".bz2") and not _is_archive(path):
-        if _looks_like_wiktionary(path):
-            return "wiktionary", path, temp_dirs
-        raise ValueError("这是压缩的词库数据（很可能是 .dict.dz），缺少配套的 .ifo 索引，无法转换。"
-                         "请用完整的 StarDict 包（含 .ifo/.idx/.dict）。")
-    raise ValueError("无法识别的文件类型：%s" % path)
+    try:
+        mode, resolved = _classify(path, input_path)
+    except Exception:
+        # 检测阶段失败：临时目录已交不到调用方，这里自行清理，避免残留整个词库
+        for d in temp_dirs:
+            shutil.rmtree(d, ignore_errors=True)
+        raise
+    return mode, resolved, temp_dirs
 
 
 def cmd_auto(args):
     try:
         mode, resolved, temp_dirs = _detect(args.input)
     except (ValueError, OSError, EOFError, tarfile.TarError, zipfile.BadZipFile,
-            lzma.LZMAError) as e:
+            lzma.LZMAError, RuntimeError, NotImplementedError) as e:
         log("错误：无法识别/解包输入文件：%s" % e)
         sys.exit(2)
     log(">>> [auto] 识别为：%s（实际使用 %s）" % (mode, resolved))

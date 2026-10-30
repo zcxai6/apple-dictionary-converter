@@ -28,6 +28,25 @@ ICON_PNG = os.path.join(SCRIPT_DIR, "app_icon_1024.png")
 SUPPORTED_EXT = (".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar", ".zip",
                   ".bz2", ".csv", ".ifo", ".idx", ".dict", ".xml")
 
+ARCHIVE_SUFFIXES = (".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar", ".zip")
+
+# 这些信号 = 被外部中止（退出/注销/合盖/手动杀），与进程自身崩溃区分开
+EXTERNAL_SIGNALS = {signal.SIGHUP, signal.SIGTERM, signal.SIGKILL, signal.SIGINT}
+
+
+def _is_archive(path):
+    return path.lower().endswith(ARCHIVE_SUFFIXES)
+
+
+def _default_name(path):
+    """从文件名推导词典名：先剥掉多段压缩包后缀（foo.tar.bz2 -> foo），再退回 splitext。"""
+    base = os.path.basename(path)
+    low = base.lower()
+    for suf in ARCHIVE_SUFFIXES:
+        if low.endswith(suf):
+            return base[: -len(suf)]
+    return os.path.splitext(base)[0]
+
 
 class App:
     def __init__(self):
@@ -176,8 +195,7 @@ class App:
         self._refresh_files()
         # 默认名称从首个文件/目录名推断（模式保持「自动」，由引擎内部识别/解包）
         if not self.name_var.get() and self.files:
-            base = os.path.splitext(os.path.basename(self.files[0]))[0]
-            self.name_var.set(base)
+            self.name_var.set(_default_name(self.files[0]))
 
     def choose_files(self):
         paths = filedialog.askopenfilenames(
@@ -251,9 +269,12 @@ class App:
             src = ranked[0]
             return [sys.executable, CONVERT, "auto", src, outdir, "--name", name] + install
         if mode == "wiktionary":
-            bz2 = next((f for f in self.files if f.lower().endswith(".bz2")), None)
+            # 注意：StarDict 的 .tar.bz2 也以 .bz2 结尾，不能当成维基 dump
+            bz2 = next((f for f in self.files
+                        if f.lower().endswith(".bz2") and not _is_archive(f)), None)
             if not bz2:
-                messagebox.showerror("缺少 .bz2", "维基模式需要 .bz2 dump 文件。")
+                messagebox.showerror("缺少 .bz2",
+                                     "维基模式需要 .bz2 dump 文件（不是 StarDict 压缩包）。")
                 return None
             return [sys.executable, CONVERT, "wiktionary", bz2, outdir, "--name", name] + install
         if mode == "csv":
@@ -343,7 +364,8 @@ class App:
             detail = self._last_log_lines(8)
             if rc == -9999:
                 msg = (
-                    "转换进程无法启动（Python 运行时或脚本路径有误）。\n\n"
+                    "转换进程启动或运行异常（Python 运行时或脚本路径有误，"
+                    "或读取进程输出时中断）。\n\n"
                     "日志末尾：\n%s"
                 ) % detail
             elif rc < 0:
@@ -352,16 +374,24 @@ class App:
                     signame = signal.Signals(sig).name
                 except Exception:
                     signame = "信号 %d" % sig
-                msg = (
-                    "转换进程被系统信号终止：%s（返回码 %d）。\n\n"
-                    "这通常不是程序 bug，而是转换进程被外部杀掉了，常见原因：\n"
-                    "  • 转换过程中退出了本程序 / 注销了账户\n"
-                    "  • 笔记本合盖或系统睡眠打断了长时间编译\n"
-                    "  • 系统资源不足（内存/CPU 限额）被系统杀掉\n\n"
-                    "注意：大词典编译本来就极慢——5MB 的词典 PyGlossary 一步就要约 8 分钟，"
-                    "维基全量可能数小时。转换期间请勿退出程序、勿合盖睡眠。\n\n"
-                    "日志末尾：\n%s"
-                ) % (signame, rc, detail)
+                if sig in EXTERNAL_SIGNALS:
+                    msg = (
+                        "转换进程被系统信号终止：%s（返回码 %d）。\n\n"
+                        "这通常不是程序 bug，而是转换进程被外部杀掉了，常见原因：\n"
+                        "  • 转换过程中退出了本程序 / 注销了账户\n"
+                        "  • 笔记本合盖或系统睡眠打断了长时间编译\n"
+                        "  • 系统资源不足（内存/CPU 限额）被系统杀掉\n\n"
+                        "注意：大词典编译本来就极慢——5MB 的词典 PyGlossary 一步就要约 8 分钟，"
+                        "维基全量可能数小时。转换期间请勿退出程序、勿合盖睡眠。\n\n"
+                        "日志末尾：\n%s"
+                    ) % (signame, rc, detail)
+                else:
+                    msg = (
+                        "转换进程崩溃：%s（返回码 %d）。\n\n"
+                        "这是转换过程自身崩溃（多发生在 DDK / perl / PyGlossary 阶段），"
+                        "而不是被外部中止。请按日志末尾定位到具体步骤。\n\n"
+                        "日志末尾：\n%s"
+                    ) % (signame, rc, detail)
             else:
                 msg = (
                     "转换失败（返回码 %d）。一般为源文件格式不支持或编译出错。\n\n"
