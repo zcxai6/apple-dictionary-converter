@@ -40,12 +40,12 @@ def _is_archive(path):
 
 def _default_name(path):
     """从文件名推导词典名：先剥掉多段压缩包后缀（foo.tar.bz2 -> foo），再退回 splitext。"""
-    base = os.path.basename(path)
+    base = os.path.basename(os.path.normpath(path))
     low = base.lower()
     for suf in ARCHIVE_SUFFIXES:
         if low.endswith(suf):
-            return base[: -len(suf)]
-    return os.path.splitext(base)[0]
+            return base[: -len(suf)] or base
+    return os.path.splitext(base)[0] or base
 
 
 class App:
@@ -262,7 +262,7 @@ class App:
             # 多选时不能盲取 files[0]（可能是 .dict/.idx），挑引擎真正认得的输入
             ranked = sorted(self.files, key=lambda f: (
                 0 if f.lower().endswith(".ifo") else
-                1 if f.lower().endswith((".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar", ".zip")) else
+                1 if _is_archive(f) else
                 2 if f.lower().endswith(".csv") else
                 3 if f.lower().endswith(".bz2") else
                 4 if os.path.isdir(f) else 5))
@@ -292,6 +292,7 @@ class App:
         return None
 
     def _run(self, cmd):
+        proc = None
         try:
             env = dict(os.environ)
             env["DICT_BUILD_TOOL_BIN"] = os.path.join(RESOURCES, "ddk")
@@ -299,17 +300,30 @@ class App:
             # 进程组/控制终端。否则 Finder 启动的 .app 在会话变化（退出/注销/合盖睡眠）
             # 时会向该进程组发 SIGHUP，把正在跑的长时间编译（PyGlossary+DDK）一并杀掉，
             # 表现为 GUI 收到「返回码 -1」。脱离会话后即可独立跑完。
-            self.proc = subprocess.Popen(
+            proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 bufsize=1, universal_newlines=True, env=env,
                 start_new_session=True)
-            for line in self.proc.stdout:
+            self.proc = proc
+            for line in proc.stdout:
                 self.log_q.put(line.rstrip("\n"))
-            rc = self.proc.wait()
+            rc = proc.wait()
             self.log_q.put(("__RC__", rc))
         except Exception as e:
             self.log_q.put("【异常】%s" % e)
-            # -9999 = 子进程压根没启动起来（与「被信号杀死」区分开）
+            # 读日志阶段出错时，子进程可能仍在编译：必须终止并回收，
+            # 否则它变成没人读 stdout 的孤儿进程，撑满管道后卡死；
+            # 而且用户能再点「开始转换」，造成同目录并发编译互相踩踏。
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=5)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+            # -9999 = 本程序侧异常（与「被信号杀死」区分开）
             self.log_q.put(("__RC__", -9999))
 
     def _poll_log(self):
