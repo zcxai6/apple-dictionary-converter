@@ -6,6 +6,9 @@
 把一个词典源文件转换成 macOS 原生词典格式（.dictionary）：
 
   子命令
+    auto       <输入> <输出目录> [--name 名称]
+        自动识别：压缩包先解到临时目录再看里面是什么；支持 .tar.bz2/.tar.gz/.zip/
+        目录/.ifo/.csv/维基 .bz2，自动选择 wiktionary/stardict/csv 路径
     wiktionary <xxx.bz2> <输出目录> [--name 名称]
         中文维基词典全量 dump（.bz2）-> StarDict -> AppleDict
     stardict   <xxx.ifo> <输出目录> [--name 名称]
