@@ -24,9 +24,13 @@
 
 import os
 import sys
+import bz2
+import lzma
 import shutil
 import subprocess
 import argparse
+import tarfile
+import zipfile
 import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -102,6 +106,14 @@ def write_makefile(project, name):
 def compile_stardict(ifo, outdir, name, install, keep_src=False):
     """StarDict -> AppleDict 工程 -> DDK 编译 .dictionary -> 修 plist -> 交付。"""
     os.makedirs(outdir, exist_ok=True)
+    # 防御：源 StarDict 词条数为 0 时提前报错，避免后续 DDK 崩出看不懂的 perl 错
+    wc = _read_wordcount(ifo)
+    if wc == 0:
+        log("错误：源词典解析出 0 个词条（wordcount=0）。")
+        log("常见原因：① 把 StarDict 压缩包（.tar.bz2）误当维基 dump 用了 wiktionary 模式；"
+            "② 输入文件不是预期格式。")
+        log("建议：用「自动」模式（会自行解包并识别），或确认文件格式后选对应模式。")
+        sys.exit(2)
     project = os.path.join(outdir, name)
     if os.path.exists(project):
         shutil.rmtree(project)
@@ -182,6 +194,141 @@ def cmd_csv(args):
     return out
 
 
+def _read_wordcount(ifo):
+    """从 StarDict .ifo 读出 wordcount 字段；读不到返回 -1。"""
+    try:
+        with open(ifo, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("wordcount="):
+                    return int((line.split("=", 1)[1].strip() or "0"))
+    except Exception:
+        return -1
+    return -1
+
+
+ARCHIVE_EXTS = (".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar", ".zip")
+
+
+def _is_archive(path):
+    p = path.lower()
+    return any(p.endswith(e) for e in ARCHIVE_EXTS)
+
+
+def _unpack(archive, dest):
+    p = archive.lower()
+    if p.endswith((".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar")):
+        with tarfile.open(archive, "r:*") as t:
+            t.extractall(dest, filter="data")
+    elif p.endswith(".zip"):
+        with zipfile.ZipFile(archive) as z:
+            z.extractall(dest)
+    else:
+        raise ValueError("不支持的压缩包格式：%s" % archive)
+
+
+def _find_all(root, exts):
+    """在 root（含子目录）里找所有匹配扩展名的文件。"""
+    hits = []
+    for dirpath, _, files in os.walk(root):
+        for fn in sorted(files):
+            if any(fn.lower().endswith(e) for e in exts):
+                hits.append(os.path.join(dirpath, fn))
+    return hits
+
+
+def _find_first(root, exts):
+    hits = _find_all(root, exts)
+    return hits[0] if hits else None
+
+
+def _looks_like_wiktionary(bz2_path):
+    """快速嗅探：解压开头一小段，看是否像维基 dump（XML）。"""
+    try:
+        with bz2.open(bz2_path, "rt", encoding="utf-8", errors="replace") as f:
+            head = f.read(65536)
+    except (OSError, EOFError, ValueError) as e:
+        log("警告：嗅探 %s 失败（%s），按非维基 dump 处理。" % (bz2_path, e))
+        return False
+    return ("<mediawiki" in head) or ("<page>" in head) or ("<text" in head)
+
+
+def _detect(input_path):
+    """判断输入到底是什么，返回 (mode, resolved_path, temp_dirs)。
+
+    - 压缩包：先解到临时目录，再看里面内容
+    - 目录：直接看里面的 .ifo / .csv / dump
+    - 单文件：按扩展名 + 内容嗅探
+    """
+    temp_dirs = []
+    path = input_path
+    if _is_archive(path):
+        tmp = tempfile.mkdtemp(prefix="dictconv_")
+        temp_dirs.append(tmp)
+        log(">>> [auto] 解压压缩包：%s -> %s" % (path, tmp))
+        try:
+            _unpack(path, tmp)
+        except Exception:
+            # 解包失败：清掉已建的临时目录，避免残留半个大词库
+            shutil.rmtree(tmp, ignore_errors=True)
+            temp_dirs.remove(tmp)
+            raise
+        path = tmp
+
+    if os.path.isdir(path):
+        ifo = _find_first(path, (".ifo",))
+        if ifo:
+            return "stardict", ifo, temp_dirs
+        csv = _find_first(path, (".csv",))
+        if csv:
+            return "csv", csv, temp_dirs
+        # 可能存在多个 .bz2（无关文件 / 分卷 dump），逐个嗅探，取第一个像维基 dump 的
+        dumps = [p for p in _find_all(path, (".bz2",)) if _looks_like_wiktionary(p)]
+        if dumps:
+            if len(dumps) > 1:
+                log("警告：目录内发现 %d 个维基 dump，仅使用第一个：%s" % (len(dumps), dumps[0]))
+            return "wiktionary", dumps[0], temp_dirs
+        raise ValueError("输入 %s（解包后目录 %s）内未找到 .ifo / .csv / 维基 dump，无法识别。"
+                         % (input_path, path))
+
+    low = path.lower()
+    if low.endswith(".ifo"):
+        return "stardict", path, temp_dirs
+    if low.endswith(".csv"):
+        return "csv", path, temp_dirs
+    if low.endswith(".bz2") and not _is_archive(path):
+        if _looks_like_wiktionary(path):
+            return "wiktionary", path, temp_dirs
+        raise ValueError("这是压缩的词库数据（很可能是 .dict.dz），缺少配套的 .ifo 索引，无法转换。"
+                         "请用完整的 StarDict 包（含 .ifo/.idx/.dict）。")
+    raise ValueError("无法识别的文件类型：%s" % path)
+
+
+def cmd_auto(args):
+    try:
+        mode, resolved, temp_dirs = _detect(args.input)
+    except (ValueError, OSError, EOFError, tarfile.TarError, zipfile.BadZipFile,
+            lzma.LZMAError) as e:
+        log("错误：无法识别/解包输入文件：%s" % e)
+        sys.exit(2)
+    log(">>> [auto] 识别为：%s（实际使用 %s）" % (mode, resolved))
+    try:
+        if mode == "stardict":
+            name = args.name or os.path.splitext(os.path.basename(resolved))[0]
+            return compile_stardict(resolved, args.outdir, name, args.install, args.keep_src)
+        if mode == "csv":
+            bookname = args.name or os.path.splitext(os.path.basename(resolved))[0]
+            sub = argparse.Namespace(csv=resolved, outdir=args.outdir, bookname=bookname,
+                                     name=args.name, install=args.install, keep_src=args.keep_src)
+            return cmd_csv(sub)
+        if mode == "wiktionary":
+            sub = argparse.Namespace(bz2=resolved, outdir=args.outdir, name=args.name,
+                                     install=args.install, keep_src=args.keep_src)
+            return cmd_wiktionary(sub)
+    finally:
+        for d in temp_dirs:
+            shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     p = argparse.ArgumentParser(description="苹果字典转换器：源文件 -> macOS .dictionary")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -210,6 +357,14 @@ def main():
     pc.add_argument("--install", action="store_true")
     pc.add_argument("--keep-src", action="store_true")
     pc.set_defaults(func=cmd_csv)
+
+    pa = sub.add_parser("auto", help="自动识别源文件（支持压缩包/目录）并转换")
+    pa.add_argument("input", help="源文件或目录（.tar.bz2/.bz2/.csv/.ifo/目录）")
+    pa.add_argument("outdir", help="输出目录")
+    pa.add_argument("--name", default=None)
+    pa.add_argument("--install", action="store_true")
+    pa.add_argument("--keep-src", action="store_true")
+    pa.set_defaults(func=cmd_auto)
 
     args = p.parse_args()
     args.func(args)

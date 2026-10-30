@@ -4,14 +4,15 @@
 苹果字典转换器 —— 原生图形界面（tkinter / Aqua）
 
 不依赖任何浏览器、不启动 web 服务。所有转换都在本进程内的子进程中完成，
-文件不会离开本机。支持：拖文件到程序图标 / 选择文件、模式自动识别、
-完成后在 Finder 定位、内置脚本编辑器。日志默认隐藏，点「显示日志」可展开。
+文件不会离开本机。支持：拖文件到程序图标 / 选择文件、自动模式（解包压缩包并
+识别格式）、完成后在 Finder 定位、内置脚本编辑器。日志默认隐藏，点「显示日志」可展开。
 """
 
 import os
 import sys
 import json
 import queue
+import signal
 import threading
 import subprocess
 import tkinter as tk
@@ -24,18 +25,8 @@ SCRIPTS_DIR = SCRIPT_DIR
 PY = os.environ.get("CONVERTER_PYTHON") or os.path.join(RESOURCES, "python3.13", "bin", "python3")
 ICON_PNG = os.path.join(SCRIPT_DIR, "app_icon_1024.png")
 
-SUPPORTED_EXT = (".bz2", ".csv", ".ifo", ".idx", ".dict", ".xml")
-
-
-def detect_mode(files):
-    exts = [os.path.splitext(f)[1].lower() for f in files]
-    if any(e == ".bz2" for e in exts):
-        return "wiktionary", "中文维基词典 dump（.bz2）"
-    if any(e == ".csv" for e in exts):
-        return "csv", "dictkit 系 CSV（如《古代汉语词典》）"
-    if any(e == ".ifo" for e in exts):
-        return "stardict", "StarDict（.ifo/.idx/.dict）"
-    return None, "无法识别（请选择 .bz2 / .csv / .ifo 文件）"
+SUPPORTED_EXT = (".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar", ".zip",
+                  ".bz2", ".csv", ".ifo", ".idx", ".dict", ".xml")
 
 
 class App:
@@ -69,7 +60,7 @@ class App:
         self._poll_log()
 
         # 拖文件到程序图标启动：argv 里带进来的真实文件路径
-        dropped = [a for a in sys.argv[1:] if os.path.isfile(a)]
+        dropped = [a for a in sys.argv[1:] if os.path.exists(a)]
         if dropped:
             self.add_files(dropped)
 
@@ -125,7 +116,7 @@ class App:
         self.mode_cb = ttk.Combobox(row, textvariable=self.mode, state="readonly", width=42,
                                     values=["auto", "wiktionary", "csv", "stardict"])
         self.mode_cb.pack(side="left")
-        ttk.Label(row, text="（auto = 按文件自动识别）", foreground="#888").pack(side="left", padx=6)
+        ttk.Label(row, text="（auto = 自动解包并识别格式，推荐）", foreground="#888").pack(side="left", padx=6)
 
         # 词典名称
         row = ttk.Frame(f)
@@ -180,15 +171,11 @@ class App:
     # ---------- 文件选择 ----------
     def add_files(self, paths):
         for p in paths:
-            if p not in self.files:
+            if os.path.exists(p) and p not in self.files:
                 self.files.append(p)
         self._refresh_files()
-        # 自动识别模式 + 默认名称
-        if self.mode.get() == "auto":
-            m, _ = detect_mode(self.files)
-            if m:
-                self.mode.set(m)
-        if not self.name_var.get():
+        # 默认名称从首个文件/目录名推断（模式保持「自动」，由引擎内部识别/解包）
+        if not self.name_var.get() and self.files:
             base = os.path.splitext(os.path.basename(self.files[0]))[0]
             self.name_var.set(base)
 
@@ -223,12 +210,6 @@ class App:
             messagebox.showerror("缺少源文件", "请先选择要转换的源文件。")
             return
         mode = self.mode.get()
-        if mode == "auto":
-            m, desc = detect_mode(self.files)
-            if not m:
-                messagebox.showerror("无法识别", desc)
-                return
-            mode = m
         name = self.name_var.get().strip()
         if not name:
             messagebox.showerror("缺少名称", "请填写词典名称（即产出 .dictionary 的文件夹名）。")
@@ -257,6 +238,18 @@ class App:
 
     def _build_cmd(self, mode, name, outdir):
         install = ["--install"] if self.install_var.get() else []
+        if mode == "auto":
+            if not self.files:
+                return None
+            # 多选时不能盲取 files[0]（可能是 .dict/.idx），挑引擎真正认得的输入
+            ranked = sorted(self.files, key=lambda f: (
+                0 if f.lower().endswith(".ifo") else
+                1 if f.lower().endswith((".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar", ".zip")) else
+                2 if f.lower().endswith(".csv") else
+                3 if f.lower().endswith(".bz2") else
+                4 if os.path.isdir(f) else 5))
+            src = ranked[0]
+            return [sys.executable, CONVERT, "auto", src, outdir, "--name", name] + install
         if mode == "wiktionary":
             bz2 = next((f for f in self.files if f.lower().endswith(".bz2")), None)
             if not bz2:
@@ -281,16 +274,22 @@ class App:
         try:
             env = dict(os.environ)
             env["DICT_BUILD_TOOL_BIN"] = os.path.join(RESOURCES, "ddk")
+            # 关键修复：start_new_session=True 让转换子进程自成会话、脱离主程序的
+            # 进程组/控制终端。否则 Finder 启动的 .app 在会话变化（退出/注销/合盖睡眠）
+            # 时会向该进程组发 SIGHUP，把正在跑的长时间编译（PyGlossary+DDK）一并杀掉，
+            # 表现为 GUI 收到「返回码 -1」。脱离会话后即可独立跑完。
             self.proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                bufsize=1, universal_newlines=True, env=env)
+                bufsize=1, universal_newlines=True, env=env,
+                start_new_session=True)
             for line in self.proc.stdout:
                 self.log_q.put(line.rstrip("\n"))
             rc = self.proc.wait()
             self.log_q.put(("__RC__", rc))
         except Exception as e:
             self.log_q.put("【异常】%s" % e)
-            self.log_q.put(("__RC__", -1))
+            # -9999 = 子进程压根没启动起来（与「被信号杀死」区分开）
+            self.log_q.put(("__RC__", -9999))
 
     def _poll_log(self):
         try:
@@ -309,6 +308,15 @@ class App:
         self.log.insert("end", text + "\n")
         self.log.see("end")
         self.log.config(state="disabled")
+
+    def _last_log_lines(self, n=8):
+        """取日志末尾若干非空行，用于失败弹窗的诊断信息。"""
+        try:
+            txt = self.log.get("1.0", "end")
+            lines = [l for l in txt.splitlines() if l.strip()]
+            return "\n".join(lines[-n:]) if lines else "（无日志）"
+        except Exception:
+            return ""
 
     def _on_done(self, rc):
         self.running = False
@@ -331,8 +339,35 @@ class App:
                 self._log("最终产物：%s" % cand)
         else:
             self.status_var.set("失败 ✗")
-            self._log("\n❌ 转换失败（返回码 %s）。请检查上方日志。" % rc)
-            messagebox.showerror("转换失败", "返回码 %s，详见转换日志。" % rc)
+            self._log("\n❌ 转换失败（返回码 %s）。" % rc)
+            detail = self._last_log_lines(8)
+            if rc == -9999:
+                msg = (
+                    "转换进程无法启动（Python 运行时或脚本路径有误）。\n\n"
+                    "日志末尾：\n%s"
+                ) % detail
+            elif rc < 0:
+                sig = -rc
+                try:
+                    signame = signal.Signals(sig).name
+                except Exception:
+                    signame = "信号 %d" % sig
+                msg = (
+                    "转换进程被系统信号终止：%s（返回码 %d）。\n\n"
+                    "这通常不是程序 bug，而是转换进程被外部杀掉了，常见原因：\n"
+                    "  • 转换过程中退出了本程序 / 注销了账户\n"
+                    "  • 笔记本合盖或系统睡眠打断了长时间编译\n"
+                    "  • 系统资源不足（内存/CPU 限额）被系统杀掉\n\n"
+                    "注意：大词典编译本来就极慢——5MB 的词典 PyGlossary 一步就要约 8 分钟，"
+                    "维基全量可能数小时。转换期间请勿退出程序、勿合盖睡眠。\n\n"
+                    "日志末尾：\n%s"
+                ) % (signame, rc, detail)
+            else:
+                msg = (
+                    "转换失败（返回码 %d）。一般为源文件格式不支持或编译出错。\n\n"
+                    "日志末尾：\n%s"
+                ) % (rc, detail)
+            messagebox.showerror("转换失败", msg)
 
     def open_last(self):
         if self.last_out:
@@ -422,13 +457,14 @@ class App:
     # ---------- 帮助/关于 ----------
     def show_help(self):
         messagebox.showinfo("使用说明",
-            "1. 选择源文件（.bz2 维基 dump / .csv dictkit 词典 / .ifo StarDict）。\n"
+            "1. 选择源文件：维基 dump（.bz2）/ dictkit CSV（.csv）/ StarDict（.ifo 或完整 .tar.bz2 包）。\n"
             "   也可把文件直接拖到 Dock / 程序图标上打开（应用未运行时拖入才会被接收）。\n"
-            "2. 模式一般留 auto 自动识别；CSV 会用到「词典名称」作为书名。\n"
+            "2. 模式保持「auto」即可：程序会自动解包压缩包、识别格式（维基/CSV/StarDict）再转换。\n"
+            "   高级用户也可手动选 wiktionary / csv / stardict。CSV 用「词典名称」作为书名。\n"
             "3. 填「词典名称」（即产出 .dictionary 的文件夹名）与「输出目录」。\n"
             "4. 可选：勾选安装到系统词典目录（勾选后才会真正写入 ~/Library/Dictionaries）。\n"
             "5. 点「开始转换」，等待日志显示完成，再点「在 Finder 中显示」。\n\n"
-            "Apple Silicon 需已安装 Rosetta 2（DDK 编译器为 x86）。")
+            "Apple Silicon 需已安装 Rosetta 2（DDK 编译器为 x86）。大词典编译很慢，转换中勿退出/合盖。")
 
     def about_app(self):
         messagebox.showinfo("关于",
