@@ -12,7 +12,26 @@ APP="$HERE/苹果字典转换器.app"
 PYTHON_SRC="${PYTHON_SRC:-/Users/zhouchenxi/.workbuddy/binaries/python/versions/3.13.12}"
 VENV_SP="${VENV_SP:-/Users/zhouchenxi/.workbuddy/binaries/python/envs/default/lib/python3.13/site-packages}"
 VENV_SHARE="${VENV_SHARE:-/Users/zhouchenxi/.workbuddy/binaries/python/envs/default/share/pyglossary}"
-DDK_SRC="${DDK_SRC:-/Users/zhouchenxi/WorkBuddy/2026-10-18-08-20-12/gudai-hanyu-dicts/ddk_bin}"
+# DDK 默认取仓库同级目录（gudai-hanyu-dicts/ddk_bin），换机时可用 DDK_SRC 覆盖
+DDK_SRC="${DDK_SRC:-$HERE/../gudai-hanyu-dicts/ddk_bin}"
+
+for v in PYTHON_SRC VENV_SP VENV_SHARE DDK_SRC; do
+  if [ ! -d "${!v}" ]; then
+    echo "错误：$v 指向的目录不存在：${!v}"
+    echo "请用环境变量指定正确路径后重试（例：DDK_SRC=/path/to/ddk/bin bash build_app.sh）。"
+    exit 1
+  fi
+done
+# 目录存在还不够，缺关键文件的话会在拷完半个 bundle 之后才失败
+if [ ! -x "$PYTHON_SRC/bin/python3" ]; then
+  echo "错误：PYTHON_SRC 中缺少可执行的 bin/python3：$PYTHON_SRC"; exit 1
+fi
+if [ ! -f "$DDK_SRC/build_dict.sh" ]; then
+  echo "错误：DDK_SRC 中缺少 build_dict.sh：$DDK_SRC"; exit 1
+fi
+if [ ! -d "$VENV_SP/pyglossary" ]; then
+  echo "错误：VENV_SP 中未找到 pyglossary：$VENV_SP"; exit 1
+fi
 
 echo "构建 .app: $APP"
 # 清理旧构建：用 python 删除，避开 shell rm -rf 限制
