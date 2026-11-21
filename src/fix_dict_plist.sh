@@ -8,7 +8,12 @@ if [ ! -f "$PLIST" ]; then echo "找不到 $PLIST"; exit 1; fi
 TMP=$(mktemp /tmp/dictplist.XXXXXX.xml)
 plutil -convert xml1 -o "$TMP" "$PLIST"
 # 只翻转 IDXIndexWritable 对应的 <true/>（保留其它 true）
-perl -0777 -i -pe 's{(<key>IDXIndexWritable</key>\s*)<true/>}{$1<false/>}g' "$TMP"
+# 新版本 DDK 生成的 plist 可能压根没有这个 key：别打印“已修正”骗人
+if [ "$(/usr/libexec/PlistBuddy -c "Print :IDXIndexWritable" "$PLIST" 2>/dev/null)" = "true" ]; then
+  perl -0777 -i -pe 's{(<key>IDXIndexWritable</key>\s*)<true/>}{$1<false/>}g' "$TMP"
+  echo "已修正: $DICT (IDXIndexWritable -> false)"
+else
+  echo "无需修正: ${DICT} -- IDXIndexWritable 不是 true（缺失或已是 false）"
+fi
 plutil -convert binary1 -o "$PLIST" "$TMP"
 rm -f "$TMP"
-echo "已修正: $DICT (IDXIndexWritable -> false)"

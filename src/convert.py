@@ -110,13 +110,40 @@ def run_pyglossary(ifo, project):
     log((r.stdout or "")[-300:])
 
 
+def _project_file_base(project, name):
+    """找出工程里 xml/css/plist 的真实文件名前缀（不带扩展名）。
+
+    PyGlossary 的 AppleDict writer 用 basename(dirname).replace(".", "_")
+    生成 xxx.xml/.css/.plist。名字含点（如 "词典-2.4.2"）时，磁盘上是
+    "词典-2_4_2.plist"，若 Makefile 照抄原 name 就会报 "plist couldn't be opened"。
+    因此一律以磁盘上的真实文件为准，输出名仍用原 name。
+    """
+    bases = [name]
+    underscored = name.replace(".", "_")
+    if underscored != name:
+        bases.append(underscored)
+    for base in bases:
+        if os.path.isfile(os.path.join(project, base + ".xml")):
+            return base
+    # 兜底：目录里只有一个顶层 xml 时就用它
+    xmls = [f for f in os.listdir(project)
+            if f.lower().endswith(".xml") and not f.startswith(".")]
+    if len(xmls) == 1:
+        return os.path.splitext(xmls[0])[0]
+    return name
+
+
 def write_makefile(project, name):
     """写对接 Apple DDK 的 Makefile（覆盖 PyGlossary 默认指向 /Applications/... 的版本）。"""
+    base = _project_file_base(project, name)
+    if base != name:
+        log(">>> 注意：工程文件名是 %s.*（PyGlossary 把 '.' 换成 '_'），输出仍为 %s.dictionary"
+            % (base, name))
     mk = (
         "DICT_NAME\t\t=\t%s\n" % name +
-        "DICT_SRC_PATH\t\t=\t%s.xml\n" % name +
-        "CSS_PATH\t\t=\t%s.css\n" % name +
-        "PLIST_PATH\t\t=\t%s.plist\n" % name +
+        "DICT_SRC_PATH\t\t=\t%s.xml\n" % base +
+        "CSS_PATH\t\t=\t%s.css\n" % base +
+        "PLIST_PATH\t\t=\t%s.plist\n" % base +
         "\n"
         "DICT_BUILD_OPTS\t\t=\n"
         "\n"
