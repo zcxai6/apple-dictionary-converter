@@ -14,7 +14,7 @@
     stardict  <xxx.ifo> <输出目录> [--name 名称]
         StarDict（.ifo/.idx/.dict，支持压缩版 .dict.dz/.idx.gz） -> AppleDict
     csv       <xxx.csv> <输出目录> <书名> [--name 名称]
-        dictkit 系 CSV（古代汉语词典/古汉语常用字字典等） -> StarDict -> AppleDict
+        dictkit 系 CSV（字典数据 CSV，如《现代汉语词典》等） -> StarDict -> AppleDict
     tabfile   <xxx.txt|tsv> <输出目录> [--name 名称]
         通用「词条<TAB>释义」两列文本 -> StarDict -> AppleDict
     appledict <工程目录> <输出目录> [--name 名称]
@@ -55,7 +55,7 @@ def _resolve_ddk():
     cands = [
         os.environ.get("DICT_BUILD_TOOL_BIN"),
         os.path.join(RESOURCES, "ddk"),
-        os.path.join(os.path.dirname(RESOURCES), "gudai-hanyu-dicts", "ddk_bin"),
+        os.path.join(os.path.dirname(RESOURCES), "dictionary-dicts", "ddk_bin"),
     ]
     for c in cands:
         if c and os.path.isfile(os.path.join(c, "build_dict.sh")):
@@ -369,7 +369,7 @@ def compile_appledict(src, outdir, name, install, keep_src=False):
 # ---------------------------------------------------------------- 命令实现
 
 def cmd_wiktionary(args):
-    name = sanitize_name(args.name or "维基文言文词典（古汉语→现代汉语）")
+    name = sanitize_name(args.name or "维基文言文词典（文言义项→现代汉语释义）")
     stardict_dir = os.path.join(args.outdir, name + "_stardict")
     ifo = wiktionary_parse.parse_wiktionary_bz2(args.bz2, stardict_dir, name)
     out = compile_stardict(ifo, args.outdir, name, args.install, args.keep_src)

@@ -1,6 +1,6 @@
 # 苹果字典转换器（macOS）
 
-一个**独立、双击即用**的 macOS 应用，把你手头的古汉语词典源文件转换成系统「词典」App 能直接打开的原生格式（`.dictionary`）。
+一个**独立、双击即用**的 macOS 应用，把你手头的词典源文件转换成系统「词典」App 能直接打开的原生格式（`.dictionary`）。
 
 不用再装 PyGlossary、不用再配置 Apple DDK、也不用忍受 DictUnifier 一导入压缩包就崩的毛病——
 本应用已经把 **Python 运行时 + PyGlossary + Apple DDK 编译器** 全部打包在内，并修好了之前踩过的所有坑。
@@ -11,7 +11,7 @@
 
 | 源文件 | 说明 |
 | --- | --- |
-| `*.bz2` | 中文维基词典全量 dump（`zhwiktionary-*-pages-articles.xml.bz2`），抽取带文言标记的义项 → 古汉语→现代汉语 |
+| `*.bz2` | 中文维基词典全量 dump（`zhwiktionary-*-pages-articles.xml.bz2`），抽取带文言标记的义项 → 文言义项与现代汉语释义对照 |
 | `*.ifo` | 标准 StarDict（`.ifo` + `.idx` + `.dict`），直接编译为 Apple 格式；也支持压缩版 `.dict.dz` / `.idx.gz`（自动解压） |
 | `*.csv` | [dictkit/data-dicts](https://github.com/dictkit/data-dicts) 风格的 CSV（如《古代汉语词典》《古汉语常用字字典》） |
 | `*.txt` / `*.tsv` / `*.tab` | 任意「词条\<TAB\>释义」两列文本（分隔符可用制表符或全角空格）：同一词条多行合并成多个义项。释义含 HTML 时原样保留（换行写 `<br/>`），纯文本则自动转义；空释义行会被跳过并计数 |
@@ -112,7 +112,7 @@ ARCH=universal bash build_app.sh  # 通用版（需两套 Python 源都在位）
 ```
 
 脚本会从本机已有的 Python + PyGlossary、Apple DDK 路径收集并复制（单架构版可用环境变量 `PYTHON_SRC` / `VENV_SP` / `VENV_SHARE` / `DDK_SRC` 覆盖来源），组装成新的 `.app`。
-DDK 默认取仓库同级的 `../gudai-hanyu-dicts/ddk_bin`，缺目录或 Python 架构不匹配时会在动手前直接报错，不会静默产出残缺应用。
+DDK 默认取仓库同级的 `../dictionary-dicts/ddk_bin`，缺目录或 Python 架构不匹配时会在动手前直接报错，不会静默产出残缺应用。
 **打包产物完全自包含**，目标机器无需预装 Python / PyGlossary / DDK。
 
 ### App 图标

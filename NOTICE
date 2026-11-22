@@ -1,4 +1,4 @@
-古汉语词典转换器（macOS）
+苹果字典转换器（macOS）
 第三方组件来源、用途与许可声明
 =====================================
 
@@ -33,7 +33,7 @@
    - 使用范围：仅供个人学习研究，不进行商业分发。
 
 4. 中文维基词典 (zh.wiktionary.org)
-   - 用途：*.bz2 全量 dump 作为「古汉语→现代汉语」文言义项的来源。
+   - 用途：*.bz2 全量 dump 作为「文言义项 → 现代汉语释义」对照的来源。
    - 许可证：CC BY-SA 4.0
    - 来源：https://zh.wiktionary.org （dump: https://dumps.wikimedia.org/zhwiktionary/）
 

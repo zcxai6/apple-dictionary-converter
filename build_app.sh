@@ -32,7 +32,7 @@ ARCH="${ARCH:-$(uname -m)}"
 case "$ARCH" in
   x86_64|amd64)
     VARIANT="64位原生版"
-    BUNDLE_ID="cn.workbuddy.gudai-hanyu-converter.x86_64"
+    BUNDLE_ID="cn.workbuddy.dictionaryconverter.x86_64"
     NEEDS_ROSETTA="false"
     RUNTIMES="x86_64|$X86_PY|$X86_SP|$X86_SHARE|python3.13"
     if [ -n "${PYTHON_SRC:-}" ]; then RUNTIMES="x86_64|$PYTHON_SRC|${VENV_SP:-$X86_SP}|${VENV_SHARE:-$X86_SHARE}|python3.13"; fi
@@ -40,7 +40,7 @@ case "$ARCH" in
     ;;
   arm64|aarch64)
     VARIANT="Arm64版"
-    BUNDLE_ID="cn.workbuddy.gudai-hanyu-converter.arm64"
+    BUNDLE_ID="cn.workbuddy.dictionaryconverter.arm64"
     NEEDS_ROSETTA="true"
     RUNTIMES="arm64|$ARM_PY|$ARM_SP|$ARM_SHARE|python3.13"
     if [ -n "${PYTHON_SRC:-}" ]; then RUNTIMES="arm64|$PYTHON_SRC|${VENV_SP:-$ARM_SP}|${VENV_SHARE:-$ARM_SHARE}|python3.13"; fi
@@ -48,7 +48,7 @@ case "$ARCH" in
     ;;
   universal)
     VARIANT="通用版"
-    BUNDLE_ID="cn.workbuddy.gudai-hanyu-converter.universal"
+    BUNDLE_ID="cn.workbuddy.dictionaryconverter.universal"
     NEEDS_ROSETTA="true"
     RUNTIMES="arm64|$ARM_PY|$ARM_SP|$ARM_SHARE|python3.13-arm64 x86_64|$X86_PY|$X86_SP|$X86_SHARE|python3.13-x86_64"
     CREDIT="通用版：内置 arm64 与 x86_64 两套 Python，启动时按本机架构自选。DDK 为 x86_64，Apple Silicon 上需要 Rosetta 2，Intel Mac 上全程原生。macOS 28 起可能失效。"
@@ -59,7 +59,7 @@ case "$ARCH" in
 esac
 
 APP="$HERE/苹果字典转换器（${VARIANT}）.app"
-DDK_SRC="${DDK_SRC:-$HERE/../gudai-hanyu-dicts/ddk_bin}"
+DDK_SRC="${DDK_SRC:-$HERE/../dictionary-dicts/ddk_bin}"
 
 if [ ! -d "$DDK_SRC" ] || [ ! -f "$DDK_SRC/build_dict.sh" ]; then
   echo "错误：DDK_SRC 缺少 build_dict.sh：$DDK_SRC"; exit 1
@@ -90,7 +90,7 @@ done
 echo "构建 .app: ${APP} （${ARCH}，${VARIANT}）"
 PYRM="$(echo "$RUNTIMES" | awk '{print $1}' | cut -d'|' -f2)/bin/python3"
 "$PYRM" -c "import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)" "$APP" || true
-for OLD in "$HERE/苹果字典转换器.app" "$HERE/古汉语词典转换器.app"; do
+for OLD in "$HERE/苹果字典转换器.app"; do
   "$PYRM" -c "import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)" "$OLD" || true
 done
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/scripts" "$APP/Contents/Resources/ddk"

@@ -189,7 +189,7 @@ def csv_to_stardict(src, outdir, bookname):
     return _write_stardict(
         entries, outdir, bookname,
         author="整理自《%s》（版权归原编者/出版机构）" % bookname,
-        description="古汉语→现代汉语 词典，由 CSV 转换，供个人学习使用",
+        description="文言义项 → 现代汉语释义对照词典，由 CSV 转换，供个人学习使用",
     )
 
 

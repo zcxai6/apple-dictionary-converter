@@ -7,7 +7,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>苹果字典转换器</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.github.gudai-hanyu-converter</string>
+	<string>com.github.dictionaryconverter</string>
 	<key>CFBundleVersion</key>
 	<string>1.1</string>
 	<key>CFBundleShortVersionString</key>
