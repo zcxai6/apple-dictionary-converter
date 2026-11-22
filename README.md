@@ -90,16 +90,29 @@ CONVERT="$APP/Contents/Resources/scripts/convert.py"
 词典名称会做合法性校验：拒绝路径字符（`/ \ : * ? " < > |`）与会被 make/shell 解释的字符（`$` 反引号 `#`），
 允许中文、空格和括号。`--keep-src` 对 `appledict` 模式会保留编译工程（路径写在日志里）。
 
+## 三个发行版（按架构）
+
+| .app | 内置 Python | DDK | Rosetta 2 | 适用 |
+| --- | --- | --- | --- | --- |
+| **苹果字典转换器（64位原生版）** | x86_64 | x86_64 | **不需要转移** | Intel Mac 原生 |
+| **苹果字典转换器（Arm64版）** | arm64 | x86_64 | **需要转移**（DDK 是 x86 程序） | Apple Silicon |
+| **苹果字典转换器（通用版）** | arm64 + x86_64 两套 | x86_64 | Apple Silicon 上需要；Intel 上不需要 | 一个包通吃，启动时按架构自选 |
+
+三个版本的 `Info.plist` 里都写了 `DictConverterVariant` / `DictConverterRosettaRequired`，Finder「显示简介」和脚本都能读到。
+体积分别约 88MB / 97MB / 184MB。DMG 可自行打包（推荐通用版一个包，或按架构分发两个）。
+
+> **macOS 28 起本应用可能失效**（DDK 依赖的私有 API / 编译链随时可能被移除）。后续如有兼容版本会再更新发布。
+
 ## 从源码重建本应用
 
-仓库内的 `苹果字典转换器.app` 已可直接使用。如需在自己机器上重新打包：
-
 ```bash
-bash build_app.sh
+bash build_app.sh                 # Arm64 版（默认按 uname -m）
+ARCH=x86_64 bash build_app.sh     # 64 位原生版
+ARCH=universal bash build_app.sh  # 通用版（需两套 Python 源都在位）
 ```
 
-脚本会从本机已有的 Python + PyGlossary、Apple DDK 路径收集并复制（可用环境变量 `PYTHON_SRC` / `VENV_SP` / `VENV_SHARE` / `DDK_SRC` 覆盖来源），组装成新的 `.app`。
-DDK 默认取仓库同级的 `../gudai-hanyu-dicts/ddk_bin`，缺目录时会直接报错提示，不会静默产出残缺应用。
+脚本会从本机已有的 Python + PyGlossary、Apple DDK 路径收集并复制（单架构版可用环境变量 `PYTHON_SRC` / `VENV_SP` / `VENV_SHARE` / `DDK_SRC` 覆盖来源），组装成新的 `.app`。
+DDK 默认取仓库同级的 `../gudai-hanyu-dicts/ddk_bin`，缺目录或 Python 架构不匹配时会在动手前直接报错，不会静默产出残缺应用。
 **打包产物完全自包含**，目标机器无需预装 Python / PyGlossary / DDK。
 
 ### App 图标

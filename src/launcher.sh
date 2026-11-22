@@ -8,8 +8,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONTENTS="$(dirname "$SCRIPT_DIR")"
 RESOURCES="$CONTENTS/Resources"
 SCRIPTS="$RESOURCES/scripts"
-PY="$RESOURCES/python3.13/bin/python3"
 GUI="$SCRIPTS/gui_app.py"
+
+# ---------- 选内置 Python：通用版按架构挑，单架构版退回默认目录 ----------
+MACHINE="$(uname -m)"
+ARCH_PY="$RESOURCES/python3.13-${MACHINE}/bin/python3"
+if [ -x "$ARCH_PY" ]; then
+  PY="$ARCH_PY"
+else
+  PY="$RESOURCES/python3.13/bin/python3"
+fi
 
 # ---------- Rosetta 2 前置检查（Apple Silicon 需要它来运行 x86 版 DDK）----------
 if [ "$(uname -m)" = "arm64" ]; then

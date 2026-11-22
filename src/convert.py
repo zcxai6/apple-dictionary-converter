@@ -64,7 +64,11 @@ def _resolve_ddk():
 
 
 DDK = _resolve_ddk()
-PY = os.environ.get("CONVERTER_PYTHON") or os.path.join(RESOURCES, "python3.13", "bin", "python3")
+# 调 PyGlossary 时必须沿用「当前解释器」：通用版内置两套 Python（python3.13-arm64 /
+# python3.13-x86_64），写死 python3.13 会落到宿主机 python3 上，bundle 内的依赖全丢。
+PY = (os.environ.get("CONVERTER_PYTHON")
+      or sys.executable
+      or os.path.join(RESOURCES, "python3.13", "bin", "python3"))
 FIX = os.path.join(SCRIPT_DIR, "fix_dict_plist.sh")
 
 sys.path.insert(0, SCRIPT_DIR)
