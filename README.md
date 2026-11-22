@@ -101,6 +101,20 @@ CONVERT="$APP/Contents/Resources/scripts/convert.py"
 三个版本的 `Info.plist` 里都写了 `DictConverterVariant` / `DictConverterRosettaRequired`，Finder「显示简介」和脚本都能读到。
 体积分别约 88MB / 97MB / 184MB。DMG 可自行打包（推荐通用版一个包，或按架构分发两个）。
 
+自行打 DMG（把 `.app` 拖进镜像窗口后设好位置即可）：
+
+```bash
+# 通用版：一个包通吃
+hdiutil create -volname "苹果字典转换器" -srcfolder "苹果字典转换器（通用版）.app" \
+  -ov -format UDZO "DictConverter-1.1.0-universal.dmg"
+
+# 按架构分发时分别打（x86_64 版在 Intel 上原生，arm64 版在 Apple Silicon 上需 Rosetta）
+hdiutil create -volname "苹果字典转换器" -srcfolder "苹果字典转换器（64位原生版）.app" \
+  -ov -format UDZO "DictConverter-1.1.0-x86_64.dmg"
+hdiutil create -volname "苹果字典转换器" -srcfolder "苹果字典转换器（Arm64版）.app" \
+  -ov -format UDZO "DictConverter-1.1.0-arm64.dmg"
+```
+
 > **macOS 28 起本应用可能失效**（DDK 依赖的私有 API / 编译链随时可能被移除）。后续如有兼容版本会再更新发布。
 
 ## 从源码重建本应用
