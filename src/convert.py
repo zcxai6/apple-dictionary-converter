@@ -8,11 +8,13 @@
   子命令
     auto      <输入> <输出目录> [--name 名称]
         自动识别：压缩包先解到临时目录再看里面是什么；支持 .tar.bz2/.tar.gz/.zip/
-        目录/.ifo/.csv/.txt/.tsv/.xml/维基 .bz2，自动选择对应路径
+        目录/.ifo/.mdx/.csv/.txt/.tsv/.xml/维基 .bz2，自动选择对应路径
     wiktionary <xxx.bz2> <输出目录> [--name 名称]
         中文维基词典全量 dump（.bz2）-> StarDict -> AppleDict
     stardict  <xxx.ifo> <输出目录> [--name 名称]
         StarDict（.ifo/.idx/.dict，支持压缩版 .dict.dz/.idx.gz） -> AppleDict
+    mdict     <xxx.mdx> <输出目录> [--name 名称]
+        MDict（.mdx + 同名 .mdd/.1.mdd/... 图片资源） -> AppleDict
     csv       <xxx.csv> <输出目录> <书名> [--name 名称]
         dictkit 系 CSV（字典数据 CSV，如《现代汉语词典》等） -> StarDict -> AppleDict
     tabfile   <xxx.txt|tsv> <输出目录> [--name 名称]
@@ -99,12 +101,16 @@ def sanitize_name(name):
     return n
 
 
-def run_pyglossary(ifo, project):
-    """调用打包内 PyGlossary，把 StarDict 转成 AppleDict 工程。"""
+def run_pyglossary(src, project, read_format="Stardict"):
+    """调用打包内 PyGlossary，把指定格式转成 AppleDict 工程。
+
+    read_format 默认 Stardict；MDict(.mdx) 传 "OctopusMdict"。
+    MDD 同名资源由 PyGlossary reader 自动查找，无需在此处理。
+    """
     py = PY if os.path.isfile(PY) else "python3"
     cmd = [py, "-c", "from pyglossary.ui.main import main; main()",
-           ifo, project, "--read-format", "Stardict", "--write-format", "AppleDict"]
-    log(">>> [1] PyGlossary: %s -> %s" % (ifo, project))
+           src, project, "--read-format", read_format, "--write-format", "AppleDict"]
+    log(">>> [1] PyGlossary (%s): %s -> %s" % (read_format, src, project))
     env = dict(os.environ)
     env["DICT_BUILD_TOOL_BIN"] = DDK
     r = subprocess.run(cmd, env=env, capture_output=True, text=True)
@@ -254,6 +260,42 @@ def compile_stardict(ifo, outdir, name, install, keep_src=False):
     return compile_project(project, outdir, name, install, keep_src)
 
 
+def compile_mdict(mdx, outdir, name, install, keep_src=False):
+    """MDict(.mdx + 同名 .mdd) -> AppleDict 工程 -> DDK 编译 .dictionary。
+
+    同名 .mdd / .1.mdd / .2.mdd... 由 PyGlossary OctopusMdict reader 自动查找，
+    必须在 .mdx 所在目录保持原名，不要只拷贝 .mdx 单独转换。
+    """
+    name = sanitize_name(name)
+    if not os.path.isfile(mdx):
+        raise ValueError("找不到 MDX 文件：%s" % mdx)
+    if os.path.getsize(mdx) == 0:
+        raise ValueError("MDX 文件为空：%s" % mdx)
+    os.makedirs(outdir, exist_ok=True)
+    base = os.path.splitext(mdx)[0]
+    mdds = [p for p in (base + ".mdd", base + ".1.mdd", base + ".2.mdd")
+            if os.path.isfile(p)]
+    if mdds:
+        log(">>> 检测到同名 MDD 资源 %d 个，将随词条一并转换：" % len(mdds))
+        for p in mdds:
+            log("    %s (%.1f MB)" % (os.path.basename(p), os.path.getsize(p) / 1048576.0))
+            # MDD 头部至少 8 字节（4 长度 + 4 校验）；损坏文件会让 PyGlossary 抛
+            # struct.error 却只报半句，提前拦下来给出可操作的提示。
+            if os.path.getsize(p) < 8:
+                raise ValueError("MDD 资源文件过小/已损坏：%s（%.0f 字节）。"
+                                 "请重新从词库发布源获取完整的 .mdd，或移走它只转词条。"
+                                 % (os.path.basename(p), os.path.getsize(p)))
+    else:
+        log(">>> 未发现同名 .mdd 资源文件；若原词库带插图/发音，请把 .mdd 与 .mdx 放在同一目录。")
+
+    project = os.path.join(outdir, name)
+    if os.path.exists(project):
+        shutil.rmtree(project)
+    os.makedirs(project)
+    run_pyglossary(mdx, project, read_format="OctopusMdict")
+    return compile_project(project, outdir, name, install, keep_src)
+
+
 # ---------------------------------------------------------------- AppleDict 工程
 
 _DEFAULT_CSS = """@charset "UTF-8";
@@ -391,6 +433,11 @@ def _convert_stardict(ifo, outdir, name, install, keep_src):
 def cmd_stardict(args):
     name = args.name or os.path.splitext(os.path.basename(args.ifo))[0]
     return _convert_stardict(args.ifo, args.outdir, name, args.install, args.keep_src)
+
+
+def cmd_mdict(args):
+    name = args.name or os.path.splitext(os.path.basename(args.mdx))[0]
+    return compile_mdict(args.mdx, args.outdir, name, args.install, args.keep_src)
 
 
 def cmd_csv(args):
@@ -552,6 +599,11 @@ def _classify(path, input_path):
             if len(ifos) > 1:
                 log("警告：目录内发现 %d 个 .ifo，仅使用第一个：%s" % (len(ifos), ifos[0]))
             return "stardict", ifos[0]
+        mdxs = [p for p in _find_all(path, (".mdx",)) if not _is_macos_meta(p)]
+        if mdxs:
+            if len(mdxs) > 1:
+                log("警告：目录内发现 %d 个 .mdx，仅使用第一个：%s" % (len(mdxs), mdxs[0]))
+            return "mdict", mdxs[0]
         xmls = [p for p in _find_all(path, (".xml",))
                 if not _is_macos_meta(p) and _looks_like_appledict_xml(p)]
         if xmls:
@@ -572,12 +624,17 @@ def _classify(path, input_path):
             if len(dumps) > 1:
                 log("警告：目录内发现 %d 个维基 dump，仅使用第一个：%s" % (len(dumps), dumps[0]))
             return "wiktionary", dumps[0]
-        raise ValueError("输入 %s（解包后目录 %s）内未找到 .ifo / .xml / .csv / 两列文本 / 维基 dump，无法识别。"
+        raise ValueError("输入 %s（解包后目录 %s）内未找到 .ifo / .mdx / .xml / .csv / 两列文本 / 维基 dump，无法识别。"
                          % (input_path, path))
 
     low = path.lower()
     if low.endswith(".ifo"):
         return "stardict", path
+    if low.endswith(".mdx"):
+        return "mdict", path
+    if low.endswith(".mdd"):
+        raise ValueError("这是 MDict 的图片/发音资源文件（.mdd），不能单独转换。"
+                         "请选与它同名的 .mdx 主文件，两者放在同一目录。")
     if low.endswith(".csv"):
         return "csv", path
     if low.endswith(TEXT_EXTS):
@@ -641,6 +698,9 @@ def cmd_auto(args):
         if mode == "stardict":
             name = args.name or os.path.splitext(os.path.basename(resolved))[0]
             return _convert_stardict(resolved, args.outdir, name, args.install, args.keep_src)
+        if mode == "mdict":
+            name = args.name or os.path.splitext(os.path.basename(resolved))[0]
+            return compile_mdict(resolved, args.outdir, name, args.install, args.keep_src)
         if mode == "csv":
             bookname = args.name or os.path.splitext(os.path.basename(resolved))[0]
             sub = argparse.Namespace(csv=resolved, outdir=args.outdir, bookname=bookname,
@@ -669,6 +729,7 @@ def cmd_detect(args):
     info = {"ok": True, "input": os.path.basename(args.input)}
     labels = {
         "stardict": "StarDict 词典",
+        "mdict": "MDict 词典（.mdx + .mdd）",
         "csv": "dictkit 系 CSV",
         "tabfile": "词条<TAB>释义 文本",
         "appledict": "AppleDict 工程",
@@ -710,6 +771,12 @@ def main():
     ps.add_argument("outdir", help="输出目录")
     common(ps)
     ps.set_defaults(func=cmd_stardict)
+
+    pm = sub.add_parser("mdict", help="MDict(.mdx + .mdd) -> AppleDict")
+    pm.add_argument("mdx", help="MDict 的 .mdx 文件（同名 .mdd 自动读取）")
+    pm.add_argument("outdir", help="输出目录")
+    common(pm)
+    pm.set_defaults(func=cmd_mdict)
 
     pc = sub.add_parser("csv", help="dictkit CSV -> AppleDict")
     pc.add_argument("csv", help="CSV 文件（含 字词索引/释义 等列）")

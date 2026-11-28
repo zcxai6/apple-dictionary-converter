@@ -13,11 +13,12 @@
 | --- | --- |
 | `*.bz2` | 中文维基词典全量 dump（`zhwiktionary-*-pages-articles.xml.bz2`），抽取带文言标记的义项 → 文言义项与现代汉语释义对照 |
 | `*.ifo` | 标准 StarDict（`.ifo` + `.idx` + `.dict`），直接编译为 Apple 格式；也支持压缩版 `.dict.dz` / `.idx.gz`（自动解压） |
+| `*.mdx` | MDict 词库：需与同名 `.mdd`（图片/发音资源，支持 `.1.mdd`/`.2.mdd`）放在同一目录，转换时一并写入词典 |
 | `*.csv` | [dictkit/data-dicts](https://github.com/dictkit/data-dicts) 风格的 CSV（如《古代汉语词典》《古汉语常用字字典》） |
 | `*.txt` / `*.tsv` / `*.tab` | 任意「词条\<TAB\>释义」两列文本（分隔符可用制表符或全角空格）：同一词条多行合并成多个义项。释义含 HTML 时原样保留（换行写 `<br/>`），纯文本则自动转义；空释义行会被跳过并计数 |
 | AppleDict 工程目录 | 已用 PyGlossary 或手写好的 AppleDict 源（`xxx.xml` + `.plist` + `.css`），跳过转换直接交给 DDK 编译；缺 plist/css 时自动补默认值 |
 | `*.tar.bz2` / `*.tar.gz` / `*.zip` | 词典**压缩包**（如 `stardict-oxford-gb-2.4.2.tar.bz2`）。自动模式会先解到临时目录，再看里面是什么 |
-| 目录 | 已解压好的词典目录，自动模式会在其中查找 `.ifo` / `.xml` / `.csv` / 两列文本 / 维基 dump |
+| 目录 | 已解压好的词典目录，自动模式会在其中查找 `.ifo` / `.mdx` / `.xml` / `.csv` / 两列文本 / 维基 dump |
 
 转换链路：`源文件 → StarDict（中间格式）→ AppleDict 工程 → DDK 编译 .dictionary → 修正 plist`。
 
@@ -29,15 +30,17 @@
 **不依赖任何浏览器、不启动 web 服务、不联网、文件不出本机**；全部转换都在应用内部子进程完成，**不会弹出终端**，应用会一直运行到你在窗口点「退出」。
 
 界面功能：
-- **选择文件 / 拖入**：点「选择文件…」打开系统原生文件对话框（**支持多选，批量顺序转换**）；也可把文件或文件夹直接拖到 Dock / 程序图标上，应用会自动载入。
-  支持 `.bz2`（维基）/ `.csv`（dictkit）/ `.txt`·`.tsv`（两列文本）/ `.ifo`（StarDict，含 `.dict.dz`）/ `xxx.xml` 所在目录（AppleDict 工程）/ 词典压缩包 / 已解压目录。
+- **选择文件 / 拖入**：点「选择文件…」打开系统原生文件对话框（**支持多选，批量顺序转换**）；也可把文件或文件夹**直接拖到窗口列表里**（拖入时列表高亮），或拖到 Dock / 程序图标上，应用会自动载入。
+  支持 `.bz2`（维基）/ `.csv`（dictkit）/ `.txt`·`.tsv`（两列文本）/ `.ifo`（StarDict，含 `.dict.dz`）/ `.mdx`（MDict，同名 `.mdd` 会自动识别为资源，不单独入队）/ `xxx.xml` 所在目录（AppleDict 工程）/ 词典压缩包 / 已解压目录。
+  > 窗口内拖放依赖内置 tkdnd；arm64 版完整支持，64 位原生版若运行时不匹配会自动降级（仍可用 Dock 图标拖入）。
 - **文件列表（批量队列）**：每个文件一行，分「文件 / 识别为 / 状态」三列。选中即**后台预检**类型（StarDict 会顺带显示词条数），转换时逐项显示「排队中 → 转换中 → ✓ 完成 6.3s」。
 - **转换模式**：默认「**自动**」——不需要你判断格式。程序会先解包压缩包、检查内容，再决定走哪条路径；也可手动指定（手动模式一次只能处理一个文件）。
 - **输出名称 / 输出目录 / 是否安装到系统词典目录**：按需填写。批量转换时名称按各文件名自动推导（重名自动加序号）。
 - **进度条与耗时**：批量时按任务数推进，右侧状态栏实时显示已用时间。
 - **停止**：转换中可以点「停止」，会终止当前编译并跳过剩余任务。
 - **日志（默认隐藏）**：进度条左上方有一个「显示日志 ▸」小按钮，点一下展开实时日志（PyGlossary → DDK 编译 → 修正 plist），再点收起。日志框**支持右键**（复制 / 全选 / 清空）。
-- **完成定位**：转换结束后给出最终 `*.dictionary` 路径，一键「在 Finder 中显示」，或直接「打开词典 App」。
+- **完成定位**：转换结束后给出最终 `*.dictionary` 路径，默认**自动把产物在 Finder 中弹出选中**（可用「完成后在 Finder 中弹出结果」勾选框关掉），也可一键「在 Finder 中显示」或「打开词典 App」。
+- **最近使用**：「文件 → 最近使用」记录最近 10 个输入文件与 10 个输出目录，点击即可在 Finder 中回访。
 - **设置记忆**：输出目录、是否安装、上次模式、窗口尺寸都会记住（存于 `~/Library/Application Support/苹果字典转换器/settings.json`）。
 - **菜单栏 · 高级**：
   - 显示内置 Python 版本与组件路径；
@@ -68,6 +71,9 @@ CONVERT="$APP/Contents/Resources/scripts/convert.py"
 
 # 已有 StarDict（.dict.dz/.idx.gz 会自动解压）
 "$PY" "$CONVERT" stardict 路径/xxx.ifo 输出目录 --name 我的词典
+
+# MDict（.mdx + 同名 .mdd 必须同目录）
+"$PY" "$CONVERT" mdict 路径/xxx.mdx 输出目录 --name 我的词典
 
 # dictkit 系 CSV
 "$PY" "$CONVERT" csv 路径/古代汉语词典（第2版）.csv 输出目录 "古代汉语词典（第2版）" --name "古代汉语词典（第2版）" --install
@@ -114,6 +120,16 @@ hdiutil create -volname "苹果字典转换器" -srcfolder "苹果字典转换�
 hdiutil create -volname "苹果字典转换器" -srcfolder "苹果字典转换器（Arm64版）.app" \
   -ov -format UDZO "DictConverter-1.1.0-arm64.dmg"
 ```
+
+也可以打成 **PKG 安装包**（安装到 `/Applications/苹果字典转换器.app`，安装后自动清隔离、补执行位、加 Gatekeeper 白名单）：
+
+```bash
+bash packaging/build_pkg.sh arm64   ~/Desktop/苹果字典转换器-arm64.pkg
+bash packaging/build_pkg.sh x86_64  ~/Desktop/苹果字典转换器-x86_64.pkg
+bash packaging/build_pkg.sh universal ~/Desktop/苹果字典转换器-universal.pkg
+```
+
+`packaging/postinstall.sh` 是安装器完成后自动执行的脚本（清 `com.apple.quarantine`、`chmod +x` 内置工具、`chown root:wheel`、`spctl --add`、弹通知）。package identifier 固定为无斜杠的 `cn.workbuddy.dictionaryconverter.pkg`——带层级的 identifier 会触发安装器 Code=110「BOM 不存在」。
 
 > **macOS 28 起本应用可能失效**（DDK 依赖的私有 API / 编译链随时可能被移除）。后续如有兼容版本会再更新发布。
 

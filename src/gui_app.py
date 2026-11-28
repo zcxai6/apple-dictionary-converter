@@ -20,6 +20,15 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
+# 窗口内拖放：tkdnd 扩展（已内置）；加载失败时降级为仅 Dock 图标拖拽
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+    _HAS_DND = True
+except Exception:
+    TkinterDnD = None
+    DND_FILES = None
+    _HAS_DND = False
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESOURCES = os.path.dirname(SCRIPT_DIR)
 CONVERT = os.path.join(SCRIPT_DIR, "convert.py")
@@ -32,12 +41,14 @@ SETTINGS_PATH = os.path.join(SETTINGS_DIR, "settings.json")
 
 SUPPORTED_EXT = (".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar", ".zip",
                   ".bz2", ".csv", ".txt", ".tsv", ".tab", ".ifo", ".idx", ".dict",
-                  ".xml")
+                  ".mdx", ".mdd", ".xml")
 
 ARCHIVE_SUFFIXES = (".tar.bz2", ".tar.gz", ".tgz", ".tar.xz", ".tar", ".zip")
 TEXT_SUFFIXES = (".txt", ".tsv", ".tab")
 # StarDict 的组成件：选了同名 .ifo 时，这些不应各自变成一个任务
 COMPANION_SUFFIXES = (".idx", ".dict", ".syn", ".dict.dz", ".idx.gz")
+# MDict 的资源件：选了同名 .mdx 时，.mdd 须留在同目录供 reader 读取，不单独入队
+MDICT_RESOURCE_SUFFIXES = (".mdd", ".1.mdd", ".2.mdd", ".3.mdd")
 
 JOB_MODE_LABEL = {
     "auto": "自动",
@@ -45,6 +56,7 @@ JOB_MODE_LABEL = {
     "csv": "CSV",
     "tabfile": "两列文本",
     "stardict": "StarDict",
+    "mdict": "MDict（.mdx）",
     "appledict": "AppleDict 工程",
 }
 
@@ -65,7 +77,15 @@ def _default_name(path):
 
 class App:
     def __init__(self):
-        self.root = tk.Tk()
+        # TkinterDnD.Tk 在 arm64(Tk9) 上能加载内置 tkdnd；x86 版库为 Tcl8 编译时
+        # 会抛 TclError，此处降级回普通 Tk —— Dock 图标拖拽仍然可用。
+        if _HAS_DND:
+            try:
+                self.root = TkinterDnD.Tk()
+            except Exception:
+                self.root = tk.Tk()
+        else:
+            self.root = tk.Tk()
         self.root.title("苹果字典转换器")
         try:
             self.root.tk.call("tk", "useinputmethods", 1)
@@ -95,6 +115,9 @@ class App:
         self.last_out = None
         self.started_at = None
         self._tick_id = None
+        self.recent_inputs = list(settings.get("recent_inputs") or [])[:10]
+        self.recent_outdirs = list(settings.get("recent_outdirs") or [])[:10]
+        self.auto_reveal = tk.BooleanVar(value=bool(settings.get("auto_reveal", True)))
 
         self._build_menu()
         self._build_ui(settings)
@@ -124,6 +147,9 @@ class App:
             "install": bool(self.install_var.get()),
             "mode": self.mode.get(),
             "geometry": self.root.geometry(),
+            "auto_reveal": bool(self.auto_reveal.get()),
+            "recent_inputs": self.recent_inputs[:10],
+            "recent_outdirs": self.recent_outdirs[:10],
         }
         try:
             os.makedirs(SETTINGS_DIR, exist_ok=True)
@@ -132,11 +158,59 @@ class App:
         except Exception:
             pass
 
+    # ---------- 最近使用 ----------
+    def _remember_input(self, paths):
+        """记录本次输入文件/目录（去重、上限 10）供「最近使用」菜单快速回访。"""
+        for p in paths:
+            p = os.path.abspath(p)
+            if p in self.recent_inputs:
+                self.recent_inputs.remove(p)
+            self.recent_inputs.insert(0, p)
+        self.recent_inputs = self.recent_inputs[:10]
+        self._rebuild_recent_menu()
+
+    def _remember_outdir(self, path):
+        if not path:
+            return
+        path = os.path.abspath(path)
+        if path in self.recent_outdirs:
+            self.recent_outdirs.remove(path)
+        self.recent_outdirs.insert(0, path)
+        self.recent_outdirs = self.recent_outdirs[:10]
+        self._rebuild_recent_menu()
+
+    def _rebuild_recent_menu(self):
+        if not hasattr(self, "m_recent"):
+            return
+        m = self.m_recent
+        m.delete(0, "end")
+        if self.recent_inputs:
+            for p in self.recent_inputs:
+                m.add_command(label=os.path.basename(p), command=lambda v=p: self._open_recent_path(v))
+        else:
+            m.add_command(label="（暂无记录）", state="disabled")
+        m.add_separator()
+        if self.recent_outdirs:
+            for p in self.recent_outdirs:
+                m.add_command(label="输出：" + os.path.basename(p),
+                              command=lambda v=p: self._open_recent_path(v))
+        else:
+            m.add_command(label="（暂无输出目录）", state="disabled")
+
+    def _open_recent_path(self, path):
+        if os.path.exists(path):
+            subprocess.run(["open", "-R", path] if os.path.isfile(path) else ["open", path])
+        else:
+            messagebox.showwarning("路径不存在", "该路径已不存在：\n%s" % path)
+
     # ---------- 菜单 ----------
     def _build_menu(self):
         menubar = tk.Menu(self.root)
         m_file = tk.Menu(menubar)
         m_file.add_command(label="选择文件…", command=self.choose_files)
+        self.m_recent = tk.Menu(m_file)
+        m_file.add_cascade(label="最近使用", menu=self.m_recent)
+        self._rebuild_recent_menu()
         m_file.add_command(label="清空列表", command=self.clear_files)
         m_file.add_separator()
         m_file.add_command(label="退出", command=self.on_close)
@@ -182,12 +256,29 @@ class App:
         self.tree.column("status", width=150, anchor="w")
         self.tree.pack(fill="both", expand=True, padx=6, pady=(4, 0))
 
+        # 窗口内拖放：整棵窗口与文件列表都注册为 drop target，拖入即高亮
+        if _HAS_DND and DND_FILES:
+            try:
+                self.root.drop_target_register(DND_FILES)
+                self.root.dnd_bind("<<Drop>>", self._on_window_drop)
+                self.root.dnd_bind("<<DropEnter>>", lambda e: self._drop_highlight(True))
+                self.root.dnd_bind("<<DropLeave>>", lambda e: self._drop_highlight(False))
+                self.tree.drop_target_register(DND_FILES)
+                self.tree.dnd_bind("<<Drop>>", self._on_window_drop)
+                self.tree.dnd_bind("<<DropEnter>>", lambda e: self._drop_highlight(True))
+                self.tree.dnd_bind("<<DropLeave>>", lambda e: self._drop_highlight(False))
+            except Exception:
+                pass
+
         row = ttk.Frame(box)
         row.pack(fill="x", padx=6, pady=6)
         ttk.Button(row, text="选择文件…", command=self.choose_files).pack(side="left")
         ttk.Button(row, text="移除选中", command=self.remove_selected).pack(side="left", padx=6)
         ttk.Button(row, text="清空", command=self.clear_files).pack(side="left")
-        ttk.Label(row, text="也可把文件拖到 Dock/程序图标上打开", foreground="#888").pack(side="right")
+        hint = "也可把文件拖到 Dock/程序图标上打开"
+        if _HAS_DND:
+            hint = "可直接把文件拖到上方列表；也可拖到 Dock 图标"
+        ttk.Label(row, text=hint, foreground="#888").pack(side="right")
 
         # ---- 参数 ----
         row = ttk.Frame(f)
@@ -195,7 +286,7 @@ class App:
         ttk.Label(row, text="转换模式：", width=9).pack(side="left")
         self.mode_cb = ttk.Combobox(row, textvariable=self.mode, state="readonly", width=18,
                                     values=["auto", "wiktionary", "csv", "tabfile",
-                                            "stardict", "appledict"])
+                                            "stardict", "mdict", "appledict"])
         self.mode_cb.pack(side="left")
         ttk.Label(row, text="auto = 自动解包并识别（推荐）", foreground="#888").pack(side="left", padx=8)
 
@@ -221,6 +312,7 @@ class App:
         self.install_var = tk.BooleanVar(value=bool(settings.get("install")))
         ttk.Checkbutton(row, text="转换完成后安装到系统词典目录（~/Library/Dictionaries）",
                         variable=self.install_var).pack(side="left")
+        ttk.Checkbutton(row, text="完成后在 Finder 中弹出结果", variable=self.auto_reveal).pack(side="left", padx=12)
 
         # ---- 按钮 ----
         row = ttk.Frame(f)
@@ -265,11 +357,16 @@ class App:
         """选了 x.ifo 时，同名的 .idx/.dict/.syn/.dict.dz 是同一本词典的组成件，
         不能让它们各自变成一个注定失败的任务。
 
+        同理，x.mdd / x.1.mdd 是 x.mdx 的资源件，必须留在同目录供 reader 读取，
+        不单独入队（但仍需随 .mdx 一起被拖进来）。
+
         词条名里可能带点（如 WordNet-3.0.ifo），所以按「剥掉组成件后缀」求 stem，
         不能用 split(".")[0] 那样把 WordNet-3.0 截成 WordNet-3。
         """
         ifo_stems = {os.path.splitext(os.path.basename(p))[0].lower()
                      for p in paths if p.lower().endswith(".ifo")}
+        mdx_stems = {os.path.splitext(os.path.basename(p))[0].lower()
+                     for p in paths if p.lower().endswith(".mdx")}
         out = []
         for p in paths:
             low = p.lower()
@@ -281,6 +378,14 @@ class App:
                     break
             if is_companion and stem in ifo_stems:
                 continue
+            # MDict 资源件：x.mdd / x.1.mdd，主名 x 与 .mdx 同名则跳过
+            if base.endswith(".mdd"):
+                for suf in MDICT_RESOURCE_SUFFIXES:
+                    if base.endswith(suf):
+                        stem = base[: -len(suf)]
+                        break
+                if stem in mdx_stems:
+                    continue
             out.append(p)
         return out
 
@@ -295,6 +400,8 @@ class App:
                 self._insert_row(p)
                 added.append(p)
         self._refresh_file_state()
+        if added:
+            self._remember_input(added)
         if not self.name_var.get() and len(self.files) == 1:
             self.name_var.set(_default_name(self.files[0]))
         # 预检类型（交给单个后台线程串行处理，不阻塞界面）
@@ -318,6 +425,25 @@ class App:
         d = filedialog.askdirectory(title="选择输出目录", initialdir=self.out_var.get())
         if d:
             self.out_var.set(d)
+
+    # ---------- 窗口内拖放 ----------
+    def _drop_highlight(self, on):
+        """拖入时给列表上色，明确告诉用户「松手就会加入」。"""
+        try:
+            self.tree.configure(background="#E8F4FF" if on else "white")
+        except Exception:
+            pass
+
+    def _on_window_drop(self, event):
+        """tkdnd 的 <<Drop>>：解析路径（含花括号包裹的带空格路径），加入队列。"""
+        try:
+            paths = self.tk.splitlist(event.data)
+        except Exception:
+            paths = [event.data]
+        paths = [p for p in paths if os.path.exists(p)]
+        self._drop_highlight(False)
+        if paths:
+            self.add_files(paths)
 
     def remove_selected(self):
         if self.running:
@@ -382,6 +508,7 @@ class App:
             messagebox.showerror("缺少输出目录", "请选择输出目录。")
             return
         os.makedirs(outdir, exist_ok=True)
+        self._remember_outdir(outdir)
 
         mode = self.mode.get()
         if mode != "auto" and len(self.files) > 1:
@@ -460,6 +587,10 @@ class App:
             if not low.endswith(".ifo"):
                 return None, "StarDict 模式需要 .ifo 文件（.idx/.dict 需与其同目录）。"
             return [sys.executable, CONVERT, "stardict", src, outdir, "--name", name] + install, None
+        if mode == "mdict":
+            if not low.endswith(".mdx"):
+                return None, "MDict 模式需要 .mdx 文件（同名 .mdd 须与其同目录）。"
+            return [sys.executable, CONVERT, "mdict", src, outdir, "--name", name] + install, None
         if mode == "appledict":
             if not (os.path.isdir(src) or low.endswith(".xml")):
                 return None, "AppleDict 模式需要一个工程目录（含 xxx.xml），或直接给 .xml 文件。"
@@ -647,6 +778,9 @@ class App:
 
         if self.last_out and os.path.isdir(self.last_out):
             self.finder_btn.config(state="normal")
+            # 用户要的「转换结果预览」：完成后自动把产物在 Finder 里弹出来
+            if self.auto_reveal.get() and done:
+                self._reveal_results()
         if self.install_var.get() or done:
             self.dict_btn.config(state="normal")
 
@@ -661,6 +795,18 @@ class App:
                 "  • Apple Silicon 未装 Rosetta 2 → 终端执行 softwareupdate --install-rosetta\n"
                 "  • 大词典编译被系统中止（退出/合盖）→ 保持程序运行、勿合盖\n\n"
                 "详见转换日志。" % (done, len(failed), detail))
+
+    def _reveal_results(self):
+        """把本次生成的 .dictionary 产物在 Finder 中选中并显示。"""
+        if not self.last_out or not os.path.isdir(self.last_out):
+            return
+        try:
+            results = [os.path.join(self.last_out, n) for n in os.listdir(self.last_out)
+                       if n.lower().endswith(".dictionary")]
+            target = results[0] if results else self.last_out
+        except OSError:
+            target = self.last_out
+        subprocess.run(["open", "-R", target])
 
     def open_last(self):
         if self.last_out:
@@ -767,18 +913,21 @@ class App:
     def show_help(self):
         messagebox.showinfo(
             "使用说明",
-            "1. 选择源文件（可一次选多个，按列表顺序批量转换）。支持：\n"
+            "1. 添加源文件：点「选择文件」，或直接把文件从 Finder 拖到窗口列表/\n"
+            "   Dock 图标上（可一次多个，按列表顺序批量转换）。支持：\n"
             "   · 维基词典 dump（.bz2）\n"
             "   · dictkit 系 CSV（.csv）\n"
             "   · 任意「词条<TAB>释义」两列文本（.txt/.tsv）\n"
             "   · StarDict（.ifo，或含 .dict.dz 的完整包）\n"
+            "   · MDict（.mdx + 同名 .mdd，插图/发音会一并转换）\n"
             "   · 已有的 AppleDict 工程目录（xxx.xml + plist + css）\n"
             "   · 上述任意内容的压缩包（.tar.bz2/.tar.gz/.zip）或已解压目录\n"
             "2. 模式保持「auto」即可：程序自动解包、识别格式再转换。\n"
             "   选好文件后，列表里的「识别为」列会显示检测结果。\n"
             "3. 填「词典名称」（即产出 .dictionary 的文件夹名）与「输出目录」。\n"
             "   批量转换时名称按各文件名自动推导。\n"
-            "4. 可选：勾选安装到系统词典目录（勾选后才会真正写入 ~/Library/Dictionaries）。\n"
+            "4. 可选：勾选安装到系统词典目录；勾选「完成后在 Finder 中弹出结果」\n"
+            "   可直接看到产物位置。「文件 → 最近使用」可回访最近的输入/输出目录。\n"
             "5. 点「开始转换」，完成后可「在 Finder 中显示」或「打开词典 App」。\n\n"
             "Apple Silicon 需已安装 Rosetta 2（DDK 编译器为 x86）。\n"
             "大词典编译很慢（5MB 词典 PyGlossary 一步约 8 分钟，维基全量可能数小时），\n"
@@ -788,7 +937,7 @@ class App:
         messagebox.showinfo(
             "关于",
             "苹果字典转换器\n\n"
-            "把词典源文件（维基 dump / CSV / 两列文本 / StarDict / AppleDict 工程）\n"
+            "把词典源文件（维基 dump / CSV / 两列文本 / StarDict / MDict / AppleDict 工程）\n"
             "转换成 macOS 原生词典（.dictionary）。\n"
             "基于 PyGlossary + Apple Dictionary Development Kit。\n"
             "详见仓库 README / NOTICE。")

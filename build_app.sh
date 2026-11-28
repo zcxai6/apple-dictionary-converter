@@ -108,7 +108,7 @@ for spec in $RUNTIMES; do
   cp -R "$pysrc/." "$APP/Contents/Resources/$dest/"
   SP="$APP/Contents/Resources/$dest/lib/python3.13/site-packages"
   mkdir -p "$SP"
-  for d in pyglossary pyglossary-5.4.2.dist-info lxml lxml-6.1.3.dist-info bs4 beautifulsoup4-4.15.0.dist-info soupsieve soupsieve-3.0.3.dist-info html5lib html5lib-1.1.dist-info webencodings webencodings-0.6.1.dist-info six.py six-1.17.0.dist-info openpyxl openpyxl-3.1.5.dist-info et_xmlfile et_xmlfile-2.0.0.dist-info charset_normalizer charset_normalizer-3.5.2.dist-info idna idna-3.20.dist-info certifi certifi-2026.7.22.dist-info requests requests-2.34.2.dist-info urllib3 urllib3-2.8.0.dist-info typing_extensions.py typing_extensions-4.16.0.dist-info biplist; do
+  for d in pyglossary pyglossary-5.4.2.dist-info lxml lxml-6.1.3.dist-info bs4 beautifulsoup4-4.15.0.dist-info soupsieve soupsieve-3.0.3.dist-info html5lib html5lib-1.1.dist-info webencodings webencodings-0.6.1.dist-info six.py six-1.17.0.dist-info openpyxl openpyxl-3.1.5.dist-info et_xmlfile et_xmlfile-2.0.0.dist-info charset_normalizer charset_normalizer-3.5.2.dist-info idna idna-3.20.dist-info certifi certifi-2026.7.22.dist-info requests requests-2.34.2.dist-info urllib3 urllib3-2.8.0.dist-info typing_extensions.py typing_extensions-4.16.0.dist-info biplist tkinterdnd2 tkinterdnd2-0.6.1.dist-info; do
     if [ -e "$sp/$d" ]; then cp -R "$sp/$d" "$SP/" 2>/dev/null || true; fi
   done
   mkdir -p "$APP/Contents/Resources/$dest/share"
